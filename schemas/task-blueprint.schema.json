@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "task-blueprint.schema.json",
+  "title": "Agent Task Blueprint",
+  "description": "Schema-validated task contract for autonomous AI agent dispatch",
+  "type": "object",
+  "required": ["task_id", "metadata", "task", "output", "constraints"],
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "pattern": "^[A-Z]+-[0-9]{4}-[0-9]{3}-B[0-9]+-N[0-9]+$",
+      "description": "Unique task ID: PROJECT-YEAR-SEQ-BATCH-NODE"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["project", "node", "workstream", "batch", "priority", "tier"],
+      "properties": {
+        "project": { "type": "string" },
+        "node": { "type": "integer", "minimum": 0 },
+        "workstream": { "type": "string" },
+        "batch": { "type": "integer", "minimum": 1 },
+        "priority": { "type": "string", "enum": ["P1", "P2", "P3", "P4"] },
+        "deadline": { "type": "string", "format": "date" },
+        "tier": { "type": "integer", "enum": [1, 2, 3] }
+      }
+    },
+    "task": {
+      "type": "object",
+      "required": ["type", "objective", "instructions"],
+      "properties": {
+        "type": { "type": "string", "enum": ["EDIT", "CREATE", "REVIEW", "RESEARCH", "EXECUTE"] },
+        "target_file": { "type": "string" },
+        "objective": { "type": "string", "minLength": 10 },
+        "instructions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "dependencies": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "mcp_tools_required": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["filesystem", "bash", "github", "knowledge", "search", "gemini-cache", "gemini-search", "gemini-deep-research"] }
+        },
+        "context_queries": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Queries to run against Gemini cache before starting task"
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "required": ["report_file", "status_options"],
+      "properties": {
+        "report_file": { "type": "string", "pattern": "^reports/.*\\.md$" },
+        "status_options": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["PASS", "FAIL", "PARTIAL", "BLOCKED"] }
+        },
+        "required_fields": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "constraints": {
+      "type": "object",
+      "properties": {
+        "write_scope": { "type": "array", "items": { "type": "string" } },
+        "read_scope": { "type": "array", "items": { "type": "string" } },
+        "forbidden": { "type": "array", "items": { "type": "string" } },
+        "requires_human_approval": { "type": "boolean", "default": false }
+      }
+    }
+  }
+}
