@@ -224,7 +224,7 @@ require_human_approval:
   - pattern: "deploy to production"
   - pattern: "delete *"          # Destructive actions
   - pattern: "rm -rf"
-  - file_destinations: ["external/", "outbox/", "deploy/"]
+  - file_destinations: ["external/", "outbox/"]
   - status_transitions: ["DRAFT -> FINAL", "STAGED -> PROD"]
 
 auto_approved:

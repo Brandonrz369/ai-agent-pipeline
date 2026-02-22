@@ -131,14 +131,12 @@ Every task dispatched to any agent is a validated JSON object:
   "output": {
     "report_file": "reports/n2_auth_middleware_batch1.md",
     "status_options": ["PASS", "FAIL", "PARTIAL", "BLOCKED"],
-    "required_fields": ["status", "files_changed", "tests_added", "issues_found"],
-    "cross_stream_alerts": []
+    "required_fields": ["status", "changes_made", "new_issues"]
   },
   "constraints": {
     "write_scope": ["src/auth/", "tests/auth/"],
     "read_scope": ["src/", "docs/"],
     "forbidden": ["node_modules/", ".env", "*.secret"],
-    "narrative_check": false,
     "requires_human_approval": false
   }
 }
@@ -321,7 +319,7 @@ function routeTask(task) {
       instructions.includes('strategic') ||
       instructions.includes('architecture') ||
       task.metadata.priority === 'P1' && task.metadata.tier === 3) {
-    return 'tier3';
+    return 3;
   }
 
   // Tier 1: fetching, reading, parsing, formatting
@@ -330,11 +328,11 @@ function routeTask(task) {
       instructions.includes('parse') ||
       instructions.includes('format') ||
       type === 'RESEARCH' && !instructions.includes('synthesize')) {
-    return 'tier1';
+    return 1;
   }
 
   // Default: Tier 2
-  return 'tier2';
+  return 2;
 }
 ```
 

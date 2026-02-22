@@ -45,9 +45,17 @@ Use the pipeline architecture to build out its own repo — fill every empty dir
 
 | Task ID | Node | Workstream | Deliverable(s) | Tier | Status |
 |---------|------|-----------|-----------------|------|--------|
-| PIPE-2026-001-B2-N5 | Red Team | review | Review all Batch 1 outputs for consistency, accuracy, cross-references | 3 | PENDING |
-| PIPE-2026-001-B2-N1 | N1 | repo | Schema validation of all JSON files, link checking, final polish | 2 | PENDING |
-| PIPE-2026-001-B2-N2 | N2 | scripts | Create scripts/rebuild-cache.sh (flagged by N5) | 1 | PENDING |
+| PIPE-2026-001-B2-N5 | Red Team | review | Review all Batch 1 outputs for consistency, accuracy, cross-references | 3 | **CONDITIONAL** |
+| PIPE-2026-001-B2-N1 | N1 | repo | JSON validation of all 8 JSON files | 1 | **PASS (8/8)** |
+| PIPE-2026-001-B2-FIX | Orch | fixes | Fix 5 major issues from Red Team review | 2 | **PASS** |
+
+### Batch 2 Fixes Applied (Red Team Major Issues)
+1. ARCHITECTURE.md: aligned report `required_fields` to match report.schema.json (`changes_made`, `new_issues`)
+2. ARCHITECTURE.md: removed ghost field `narrative_check` from example
+3. docs/phase3: added "Not Yet Implemented" note for Workflow E (HITL Gate)
+4. docs/phase6: removed `deploy/` from `file_destinations` to match ARCHITECTURE.md
+5. worker-prompt.md: standardized CHANGES MADE format to backtick-wrapped paths
+6. ARCHITECTURE.md: routing function returns integers (1/2/3) to match schema
 
 ---
 

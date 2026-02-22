@@ -255,6 +255,10 @@ field, then commits with a structured message: `"Batch N [task_id]: objective --
 
 ## Workflow E: HITL Gate
 
+> **Status: Not Yet Implemented.** This workflow is documented here for completeness
+> but does not have a corresponding JSON file in `workflows/`. It requires Discord
+> API integration (reaction-based approval), not just webhooks. Planned for a future batch.
+
 Human-in-the-loop gates pause the pipeline and wait for human approval before
 proceeding with high-consequence actions.
 

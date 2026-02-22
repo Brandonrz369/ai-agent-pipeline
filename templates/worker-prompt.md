@@ -43,7 +43,7 @@ To do research:
 ## Timestamp: [date]
 
 ### CHANGES MADE
-- [file]: [what changed and why]
+- `[file/path]`: [what changed and why]
 
 ### GEMINI QUERIES RUN
 - Query: "[what you asked]"
