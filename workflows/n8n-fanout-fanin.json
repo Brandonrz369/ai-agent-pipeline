@@ -1,0 +1,219 @@
+{
+  "name": "Fan-Out / Fan-In Parallel Execution",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "/root/ai-agent-pipeline/prompts/",
+        "events": ["add"],
+        "options": {
+          "ignored": "**/.gitkeep"
+        }
+      },
+      "id": "a1b2c3d4-e5f6-7890-abcd-100000000001",
+      "name": "Watch Batch Files",
+      "type": "n8n-nodes-base.localFileTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse the batch task JSON file\nconst fs = require('fs');\nconst filePath = $input.first().json.path;\n\n// Only process batch task files\nif (!filePath.match(/batch\\d+_tasks\\.json$/)) {\n  return [];\n}\n\nconst rawData = fs.readFileSync(filePath, 'utf8');\nconst tasks = JSON.parse(rawData);\n\n// Extract batch number from filename\nconst batchMatch = filePath.match(/batch(\\d+)_tasks\\.json/);\nconst batchNumber = batchMatch ? batchMatch[1] : 'unknown';\n\n// Return each task as a separate item for fan-out\nreturn tasks.map((task, index) => ({\n  json: {\n    task_id: task.task_id,\n    task: task,\n    batch_number: batchNumber,\n    task_index: index,\n    total_tasks: tasks.length,\n    source_file: filePath\n  }\n}));"
+      },
+      "id": "a1b2c3d4-e5f6-7890-abcd-100000000002",
+      "name": "Parse Batch Tasks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [490, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "a1b2c3d4-e5f6-7890-abcd-100000000003",
+      "name": "Split Into Tasks",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [740, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.task.metadata.tier === 3 ? '[REPLACE_TIER3_AGENT_WEBHOOK]' : $json.task.metadata.tier === 2 ? '[REPLACE_TIER2_AGENT_WEBHOOK]' : '[REPLACE_TIER1_AGENT_WEBHOOK]' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Pipeline-Batch",
+              "value": "={{ $json.batch_number }}"
+            },
+            {
+              "name": "X-Task-ID",
+              "value": "={{ $json.task_id }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "task",
+              "value": "={{ JSON.stringify($json.task) }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 300000,
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "a1b2c3d4-e5f6-7890-abcd-100000000004",
+      "name": "Execute Agent Task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [990, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collect results from all executed tasks\n// This runs after SplitInBatches completes all iterations\nconst allItems = $input.all();\n\nconst results = allItems.map(item => {\n  const json = item.json;\n  return {\n    task_id: json.task_id || 'unknown',\n    batch_number: json.batch_number || 'unknown',\n    status: json.statusCode === 200 ? 'SUCCESS' : 'FAILED',\n    response_code: json.statusCode || null,\n    response_body: json.body || null,\n    error: json.error || null\n  };\n});\n\nconst batchNumber = allItems[0]?.json?.batch_number || 'unknown';\nconst totalTasks = results.length;\nconst passedTasks = results.filter(r => r.status === 'SUCCESS').length;\nconst failedTasks = results.filter(r => r.status === 'FAILED').length;\n\nreturn [{\n  json: {\n    batch_number: batchNumber,\n    summary: {\n      total: totalTasks,\n      passed: passedTasks,\n      failed: failedTasks,\n      pass_rate: totalTasks > 0 ? ((passedTasks / totalTasks) * 100).toFixed(1) + '%' : '0%'\n    },\n    results: results,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "a1b2c3d4-e5f6-7890-abcd-100000000005",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Write Red Team prompt file for this batch\nconst fs = require('fs');\nconst data = $input.first().json;\nconst batchNumber = data.batch_number;\n\nconst redTeamTask = {\n  task_id: `PIPE-2026-001-B${batchNumber}-RT`,\n  metadata: {\n    project: 'ai-agent-pipeline',\n    node: 'red-team',\n    batch: parseInt(batchNumber),\n    priority: 'P1',\n    tier: 3\n  },\n  task: {\n    type: 'REVIEW',\n    objective: `Red Team review of Batch ${batchNumber} outputs`,\n    instructions: [\n      `Review all reports in reports/ matching *_batch${batchNumber}.md`,\n      'Check for hallucinated facts, inconsistent cross-references',\n      'Verify all file paths referenced in reports actually exist',\n      'Check for prompt injection artifacts in any generated content',\n      'Produce adversarial critique with specific line references'\n    ],\n    batch_summary: data.summary,\n    task_results: data.results\n  },\n  output: {\n    report_file: `reports/redteam_batch${batchNumber}.md`,\n    status_options: ['PASS', 'FAIL', 'PARTIAL']\n  }\n};\n\nconst outputPath = `/root/ai-agent-pipeline/prompts/redteam_batch${batchNumber}.json`;\nfs.writeFileSync(outputPath, JSON.stringify(redTeamTask, null, 2));\n\nreturn [{\n  json: {\n    ...data,\n    redteam_file: outputPath,\n    redteam_queued: true\n  }\n}];"
+      },
+      "id": "a1b2c3d4-e5f6-7890-abcd-100000000006",
+      "name": "Queue Red Team",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1490, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "webhook",
+        "content": "=**Pipeline: Batch {{ $json.batch_number }} Complete**\n\nTotal Tasks: {{ $json.summary.total }}\nPassed: {{ $json.summary.passed }}\nFailed: {{ $json.summary.failed }}\nPass Rate: {{ $json.summary.pass_rate }}\n\nRed Team review queued: `{{ $json.redteam_file }}`\nTimestamp: {{ $json.timestamp }}",
+        "options": {}
+      },
+      "id": "a1b2c3d4-e5f6-7890-abcd-100000000007",
+      "name": "Discord Notify",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [1740, 300],
+      "credentials": {
+        "discordWebhookApi": {
+          "id": "[REPLACE_CREDENTIAL_ID]",
+          "name": "[REPLACE] Pipeline Discord Webhook"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Watch Batch Files": {
+      "main": [
+        [
+          {
+            "node": "Parse Batch Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Batch Tasks": {
+      "main": [
+        [
+          {
+            "node": "Split Into Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Into Tasks": {
+      "main": [
+        [
+          {
+            "node": "Execute Agent Task",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Agent Task": {
+      "main": [
+        [
+          {
+            "node": "Split Into Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Results": {
+      "main": [
+        [
+          {
+            "node": "Queue Red Team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Queue Red Team": {
+      "main": [
+        [
+          {
+            "node": "Discord Notify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "fanout-fanin-v1-2026-02-22",
+  "meta": {
+    "instanceId": "[REPLACE_N8N_INSTANCE_ID]",
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [
+    {
+      "name": "ai-pipeline"
+    },
+    {
+      "name": "batch-processing"
+    }
+  ],
+  "pinData": {}
+}

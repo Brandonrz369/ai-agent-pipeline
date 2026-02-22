@@ -1,0 +1,236 @@
+[
+  {
+    "task_id": "PIPE-2026-001-B1-N1",
+    "metadata": {
+      "project": "ai-agent-pipeline",
+      "node": 1,
+      "workstream": "docs",
+      "batch": 1,
+      "priority": "P2",
+      "tier": 2
+    },
+    "task": {
+      "type": "CREATE",
+      "objective": "Write standalone documentation for each of the 6 pipeline phases",
+      "instructions": [
+        "Query knowledge cache for each phase's details from ARCHITECTURE.md",
+        "Create docs/phase1-deep-research.md — expand Phase 1 section into standalone guide",
+        "Create docs/phase2-schema-decomposition.md — expand Phase 2 with schema examples",
+        "Create docs/phase3-n8n-orchestration.md — expand Phase 3 with setup walkthrough",
+        "Create docs/phase4-model-routing.md — expand Phase 4 with routing decision trees",
+        "Create docs/phase5-mcp-execution.md — expand Phase 5 with TypeScript wrapper examples",
+        "Create docs/phase6-security.md — expand Phase 6 with threat mitigations",
+        "Each doc should be 300-600 lines, include code examples, and cross-reference other phases"
+      ],
+      "dependencies": [],
+      "mcp_tools_required": ["filesystem", "gemini-cache"],
+      "context_queries": [
+        "What does Phase 1 Deep Research cover in the architecture?",
+        "What does Phase 6 Security & Governance cover?"
+      ]
+    },
+    "output": {
+      "report_file": "reports/n1_docs_batch1.md",
+      "status_options": ["PASS", "FAIL", "PARTIAL", "BLOCKED"],
+      "required_fields": ["status", "files_changed"]
+    },
+    "constraints": {
+      "write_scope": ["docs/"],
+      "read_scope": ["*"],
+      "forbidden": ["schemas/", "templates/", "security/", "workflows/"],
+      "requires_human_approval": false
+    }
+  },
+  {
+    "task_id": "PIPE-2026-001-B1-N2",
+    "metadata": {
+      "project": "ai-agent-pipeline",
+      "node": 2,
+      "workstream": "schemas",
+      "batch": 1,
+      "priority": "P2",
+      "tier": 2
+    },
+    "task": {
+      "type": "CREATE",
+      "objective": "Write report.schema.json and routing-config.schema.json matching existing schema style",
+      "instructions": [
+        "Read schemas/task-blueprint.schema.json for style reference",
+        "Read templates/worker-prompt.md for the report format specification",
+        "Create schemas/report.schema.json — validate the worker report structure (status, files_changed, cross_stream_alerts, etc.)",
+        "Query knowledge cache for Phase 4 model routing details",
+        "Create schemas/routing-config.schema.json — validate routing configuration (tiers, models, cost thresholds, fallback rules)",
+        "Both schemas must use JSON Schema draft-07 and follow the same conventions as task-blueprint.schema.json"
+      ],
+      "dependencies": [],
+      "mcp_tools_required": ["filesystem", "gemini-cache"],
+      "context_queries": [
+        "What fields are in the worker report format?",
+        "What is the 3-tier model routing configuration structure?"
+      ]
+    },
+    "output": {
+      "report_file": "reports/n2_schemas_batch1.md",
+      "status_options": ["PASS", "FAIL", "PARTIAL", "BLOCKED"],
+      "required_fields": ["status", "files_changed"]
+    },
+    "constraints": {
+      "write_scope": ["schemas/"],
+      "read_scope": ["*"],
+      "forbidden": ["docs/", "templates/", "security/", "workflows/"],
+      "requires_human_approval": false
+    }
+  },
+  {
+    "task_id": "PIPE-2026-001-B1-N3",
+    "metadata": {
+      "project": "ai-agent-pipeline",
+      "node": 3,
+      "workstream": "templates",
+      "batch": 1,
+      "priority": "P2",
+      "tier": 2
+    },
+    "task": {
+      "type": "CREATE",
+      "objective": "Write redteam-prompt.md and task-file.md prompt templates",
+      "instructions": [
+        "Read templates/orchestrator-prompt.md and templates/worker-prompt.md for style/format reference",
+        "Query knowledge cache for Red Team agent role and responsibilities",
+        "Create templates/redteam-prompt.md — system prompt for the critic/QA agent (Node 5). Role: find unsupported claims, check cross-references, verify citations against cache, adversarial review",
+        "Create templates/task-file.md — human-readable task dispatch template. This is NOT a system prompt — it's a markdown template that maps to task-blueprint.schema.json fields, used for dispatching tasks to workers in readable form",
+        "Both templates should use [BRACKET] placeholders like the existing templates"
+      ],
+      "dependencies": [],
+      "mcp_tools_required": ["filesystem", "gemini-cache"],
+      "context_queries": [
+        "What is the Red Team agent's role in the pipeline?",
+        "What fields are in the task blueprint schema?"
+      ]
+    },
+    "output": {
+      "report_file": "reports/n3_templates_batch1.md",
+      "status_options": ["PASS", "FAIL", "PARTIAL", "BLOCKED"],
+      "required_fields": ["status", "files_changed"]
+    },
+    "constraints": {
+      "write_scope": ["templates/"],
+      "read_scope": ["*"],
+      "forbidden": ["docs/", "schemas/", "security/", "workflows/"],
+      "requires_human_approval": false
+    }
+  },
+  {
+    "task_id": "PIPE-2026-001-B1-N4",
+    "metadata": {
+      "project": "ai-agent-pipeline",
+      "node": 4,
+      "workstream": "security",
+      "batch": 1,
+      "priority": "P1",
+      "tier": 2
+    },
+    "task": {
+      "type": "CREATE",
+      "objective": "Write threat-model.md, rbac-config.md, and hitl-gates.md security documentation",
+      "instructions": [
+        "Query knowledge cache for all Phase 6 Security & Governance details",
+        "Query knowledge cache for GTG-1002 security lessons",
+        "Create security/threat-model.md — full threat analysis expanding the threat table from ARCHITECTURE.md. Include: each threat vector, attack scenarios, likelihood, impact, mitigation strategies, detection methods",
+        "Create security/rbac-config.md — per-node permission matrix with YAML examples. Cover orchestrator, workers (1-4), and red team. Include: read/write/execute scopes, forbidden operations, escalation procedures",
+        "Create security/hitl-gates.md — human-in-the-loop checkpoint definitions. Include: trigger conditions, approval workflows, Discord notification format, timeout behavior, override procedures"
+      ],
+      "dependencies": [],
+      "mcp_tools_required": ["filesystem", "gemini-cache"],
+      "context_queries": [
+        "What are all the threat vectors listed in Phase 6?",
+        "What RBAC configuration is shown in the architecture?"
+      ]
+    },
+    "output": {
+      "report_file": "reports/n4_security_batch1.md",
+      "status_options": ["PASS", "FAIL", "PARTIAL", "BLOCKED"],
+      "required_fields": ["status", "files_changed"]
+    },
+    "constraints": {
+      "write_scope": ["security/"],
+      "read_scope": ["*"],
+      "forbidden": ["docs/", "schemas/", "templates/", "workflows/"],
+      "requires_human_approval": false
+    }
+  },
+  {
+    "task_id": "PIPE-2026-001-B1-N5",
+    "metadata": {
+      "project": "ai-agent-pipeline",
+      "node": 5,
+      "workstream": "workflows",
+      "batch": 1,
+      "priority": "P2",
+      "tier": 2
+    },
+    "task": {
+      "type": "CREATE",
+      "objective": "Research N8n workflow JSON format and write 4 exportable workflow files",
+      "instructions": [
+        "Research actual N8n workflow JSON export structure (use web search)",
+        "Query knowledge cache for all 4 workflow descriptions in Phase 3",
+        "Create workflows/n8n-fanout-fanin.json — Fan-Out/Fan-In parallel execution workflow with file watcher trigger, JSON parse, sub-workflow dispatch, completion gate, Discord notification",
+        "Create workflows/n8n-delegation-chain.json — Automated delegation chain with file watcher on reports/, status parsing, conditional next-task dispatch",
+        "Create workflows/n8n-cache-monitor.json — Scheduled cache health check (90 min interval), Discord alert on missing caches",
+        "Create workflows/n8n-audit-trail.json — Git commit automation triggered by PASS report files",
+        "All workflows must be valid N8n JSON format importable via N8n UI"
+      ],
+      "dependencies": [],
+      "mcp_tools_required": ["filesystem", "gemini-cache", "gemini-search"],
+      "context_queries": [
+        "What are the 4 N8n workflows described in Phase 3?",
+        "What triggers and actions does each workflow use?"
+      ]
+    },
+    "output": {
+      "report_file": "reports/n5_workflows_batch1.md",
+      "status_options": ["PASS", "FAIL", "PARTIAL", "BLOCKED"],
+      "required_fields": ["status", "files_changed"]
+    },
+    "constraints": {
+      "write_scope": ["workflows/"],
+      "read_scope": ["*"],
+      "forbidden": ["docs/", "schemas/", "templates/", "security/"],
+      "requires_human_approval": false
+    }
+  },
+  {
+    "task_id": "PIPE-2026-001-B1-N6",
+    "metadata": {
+      "project": "ai-agent-pipeline",
+      "node": 6,
+      "workstream": "repo",
+      "batch": 1,
+      "priority": "P3",
+      "tier": 1
+    },
+    "task": {
+      "type": "CREATE",
+      "objective": "Create .gitignore and MIT LICENSE file for the repository",
+      "instructions": [
+        "Create .gitignore covering: Node.js/TypeScript (node_modules, dist, .tsbuildinfo), Python (.venv, __pycache__, .pyc), AI pipeline specifics (*.log, audit.log, .env, *.secret), OS files (.DS_Store, Thumbs.db), IDE (.vscode/, .idea/), N8n local data, /tmp/",
+        "Create LICENSE file with MIT license, year 2026, copyright holder 'ai-agent-pipeline contributors'"
+      ],
+      "dependencies": [],
+      "mcp_tools_required": ["filesystem"],
+      "context_queries": []
+    },
+    "output": {
+      "report_file": "reports/n6_repo_batch1.md",
+      "status_options": ["PASS", "FAIL", "PARTIAL", "BLOCKED"],
+      "required_fields": ["status", "files_changed"]
+    },
+    "constraints": {
+      "write_scope": [".gitignore", "LICENSE"],
+      "read_scope": ["*"],
+      "forbidden": ["docs/", "schemas/", "templates/", "security/", "workflows/"],
+      "requires_human_approval": false
+    }
+  }
+]

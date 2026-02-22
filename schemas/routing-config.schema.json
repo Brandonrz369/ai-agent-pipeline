@@ -1,0 +1,155 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "routing-config.schema.json",
+  "title": "Model Routing Configuration",
+  "description": "Schema-validated configuration for the 3-tier intent-based model routing stack",
+  "type": "object",
+  "required": ["tiers", "classifier", "fallback", "cost_limits"],
+  "properties": {
+    "tiers": {
+      "type": "object",
+      "required": ["tier1", "tier2", "tier3"],
+      "properties": {
+        "tier1": { "$ref": "#/definitions/tier_config" },
+        "tier2": { "$ref": "#/definitions/tier_config" },
+        "tier3": { "$ref": "#/definitions/tier_config" }
+      },
+      "description": "Configuration for each of the three model tiers (Runners, Workers, Synthesis)"
+    },
+    "classifier": {
+      "type": "object",
+      "required": ["model", "rules"],
+      "properties": {
+        "model": {
+          "type": "string",
+          "description": "Model used for routing classification (should be Tier 1 for cost efficiency)"
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["pattern", "tier"],
+            "properties": {
+              "pattern": {
+                "type": "string",
+                "description": "Regex or keyword pattern matched against task instructions"
+              },
+              "tier": {
+                "type": "integer",
+                "enum": [1, 2, 3],
+                "description": "Target tier when pattern matches"
+              }
+            }
+          },
+          "minItems": 1,
+          "description": "Pattern-based routing rules evaluated before model classification"
+        }
+      },
+      "description": "Lightweight classifier that routes tasks to the appropriate tier"
+    },
+    "fallback": {
+      "type": "object",
+      "required": ["tier1_failure", "tier2_failure", "tier3_failure"],
+      "properties": {
+        "tier1_failure": {
+          "type": "object",
+          "required": ["tier"],
+          "properties": {
+            "tier": {
+              "type": "integer",
+              "enum": [2, 3],
+              "description": "Tier to escalate to when Tier 1 fails"
+            }
+          },
+          "description": "Escalation target on Tier 1 failure"
+        },
+        "tier2_failure": {
+          "type": "object",
+          "required": ["tier"],
+          "properties": {
+            "tier": {
+              "type": "integer",
+              "enum": [3],
+              "description": "Tier to escalate to when Tier 2 fails"
+            }
+          },
+          "description": "Escalation target on Tier 2 failure"
+        },
+        "tier3_failure": {
+          "type": "object",
+          "required": ["action"],
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "stop_and_alert",
+              "description": "Terminal action when the highest tier fails"
+            }
+          },
+          "description": "Terminal action on Tier 3 failure — pipeline halts and alerts human"
+        }
+      },
+      "description": "Escalation protocol when a tier fails (hallucination, retry loop, error)"
+    },
+    "cost_limits": {
+      "type": "object",
+      "required": ["daily_budget_usd", "alert_threshold_percent"],
+      "properties": {
+        "daily_budget_usd": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Maximum daily spend in USD across all tiers"
+        },
+        "alert_threshold_percent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Percentage of daily budget at which to trigger a cost alert"
+        }
+      },
+      "description": "Budget guardrails to prevent runaway token costs"
+    }
+  },
+  "definitions": {
+    "tier_config": {
+      "type": "object",
+      "required": ["models", "task_profiles", "max_retries"],
+      "properties": {
+        "models": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["provider", "model_id", "cost_per_1m_tokens"],
+            "properties": {
+              "provider": {
+                "type": "string",
+                "description": "Model provider (e.g., anthropic, google, openai)"
+              },
+              "model_id": {
+                "type": "string",
+                "description": "Specific model identifier for API calls"
+              },
+              "cost_per_1m_tokens": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Cost per 1 million tokens in USD"
+              }
+            }
+          },
+          "minItems": 1,
+          "description": "Available models for this tier, ordered by preference"
+        },
+        "task_profiles": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "Types of tasks routed to this tier"
+        },
+        "max_retries": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Maximum retry attempts before escalating to fallback"
+        }
+      }
+    }
+  }
+}

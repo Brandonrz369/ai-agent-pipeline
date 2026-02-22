@@ -1,0 +1,306 @@
+{
+  "name": "Automated Delegation Chain",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "/root/ai-agent-pipeline/reports/",
+        "events": ["add"],
+        "options": {
+          "ignored": "**/.gitkeep,**/redteam_*"
+        }
+      },
+      "id": "b1b2c3d4-e5f6-7890-abcd-200000000001",
+      "name": "Watch Report Files",
+      "type": "n8n-nodes-base.localFileTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Read and parse the report file\nconst fs = require('fs');\nconst filePath = $input.first().json.path;\nconst fileName = filePath.split('/').pop();\n\n// Only process node reports matching n[2-5]_*_batch*.md\nconst reportPattern = /^n(\\d+)_(.+)_batch(\\d+)\\.md$/;\nconst match = fileName.match(reportPattern);\n\nif (!match) {\n  return [{ json: { skip: true, reason: 'Not a node report file', file: fileName } }];\n}\n\nconst nodeNumber = parseInt(match[1]);\nconst taskName = match[2];\nconst batchNumber = parseInt(match[3]);\n\nconst content = fs.readFileSync(filePath, 'utf8');\n\n// Parse status from report\nlet status = 'UNKNOWN';\nconst statusMatch = content.match(/##\\s*Status:\\s*(PASS|FAIL|PARTIAL|BLOCKED)/i);\nif (statusMatch) {\n  status = statusMatch[1].toUpperCase();\n}\n\n// Parse task ID\nlet taskId = 'UNKNOWN';\nconst taskIdMatch = content.match(/##\\s*Task\\s*ID:\\s*(\\S+)/i);\nif (taskIdMatch) {\n  taskId = taskIdMatch[1];\n}\n\n// Parse files changed\nconst filesChanged = [];\nconst filesSection = content.match(/### CHANGES MADE[\\s\\S]*?(?=###|$)/i);\nif (filesSection) {\n  const fileMatches = filesSection[0].match(/- \\[?([^\\]\\n]+?)\\]?:?\\s/g);\n  if (fileMatches) {\n    fileMatches.forEach(m => {\n      const f = m.replace(/^- \\[?/, '').replace(/\\]?:?\\s*$/, '').trim();\n      if (f) filesChanged.push(f);\n    });\n  }\n}\n\n// Parse cross-stream alerts\nconst crossStreamAlerts = [];\nconst alertsSection = content.match(/### CROSS-STREAM ALERTS[\\s\\S]*?(?=###|$)/i);\nif (alertsSection) {\n  const alertLines = alertsSection[0].split('\\n').filter(l => l.startsWith('- '));\n  alertLines.forEach(l => crossStreamAlerts.push(l.replace(/^- /, '')));\n}\n\n// Parse issues\nconst issues = [];\nconst issuesSection = content.match(/### NEW ISSUES FOUND[\\s\\S]*?(?=###|$)/i);\nif (issuesSection) {\n  const issueLines = issuesSection[0].split('\\n').filter(l => l.startsWith('- '));\n  issueLines.forEach(l => issues.push(l.replace(/^- /, '')));\n}\n\nreturn [{\n  json: {\n    skip: false,\n    file_path: filePath,\n    file_name: fileName,\n    node_number: nodeNumber,\n    task_name: taskName,\n    batch_number: batchNumber,\n    task_id: taskId,\n    status: status,\n    files_changed: filesChanged,\n    cross_stream_alerts: crossStreamAlerts,\n    issues: issues,\n    report_content: content,\n    parsed_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "b1b2c3d4-e5f6-7890-abcd-200000000002",
+      "name": "Parse Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [490, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "skip-check",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "b1b2c3d4-e5f6-7890-abcd-200000000003",
+      "name": "Is Valid Report?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [740, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "status-pass",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "PASS",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "b1b2c3d4-e5f6-7890-abcd-200000000004",
+      "name": "Status is PASS?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [990, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "status-fail",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "FAIL",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "b1b2c3d4-e5f6-7890-abcd-200000000005",
+      "name": "Status is FAIL?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [990, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Determine next task in the delegation chain\nconst fs = require('fs');\nconst data = $input.first().json;\nconst currentNode = data.node_number;\nconst batchNumber = data.batch_number;\n\n// Delegation chain: Node 2 (schemas) -> Node 3 (research) -> Node 4 (code) -> Node 5 (workflows) -> Red Team\nconst chainOrder = [2, 3, 4, 5];\nconst currentIndex = chainOrder.indexOf(currentNode);\n\nlet nextAction = 'BATCH_COMPLETE';\nlet nextNode = null;\nlet nextTaskFile = null;\n\nif (currentIndex >= 0 && currentIndex < chainOrder.length - 1) {\n  nextNode = chainOrder[currentIndex + 1];\n  nextAction = 'DISPATCH_NEXT';\n  \n  // Check if a task file exists for the next node\n  const promptsDir = '/root/ai-agent-pipeline/prompts/';\n  const expectedFile = `batch${batchNumber}_n${nextNode}_tasks.json`;\n  nextTaskFile = promptsDir + expectedFile;\n  \n  // If the task file exists, read it; otherwise create dispatch signal\n  if (fs.existsSync(nextTaskFile)) {\n    nextAction = 'DISPATCH_NEXT';\n  } else {\n    nextAction = 'SIGNAL_ORCHESTRATOR';\n  }\n} else if (currentIndex === chainOrder.length - 1) {\n  // Last node completed — trigger red team\n  nextAction = 'TRIGGER_RED_TEAM';\n}\n\nreturn [{\n  json: {\n    ...data,\n    next_action: nextAction,\n    next_node: nextNode,\n    next_task_file: nextTaskFile,\n    delegation_chain_position: `${currentIndex + 1}/${chainOrder.length}`\n  }\n}];"
+      },
+      "id": "b1b2c3d4-e5f6-7890-abcd-200000000006",
+      "name": "Determine Next Task",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1240, 100]
+    },
+    {
+      "parameters": {
+        "authentication": "webhook",
+        "content": "=**Pipeline: Task Dispatched**\n\nCompleted: Node {{ $json.node_number }} ({{ $json.task_name }})\nStatus: PASS\nBatch: {{ $json.batch_number }}\nTask ID: {{ $json.task_id }}\n\nNext Action: {{ $json.next_action }}\nNext Node: {{ $json.next_node || 'N/A' }}\nChain Position: {{ $json.delegation_chain_position }}\n\nTimestamp: {{ $json.parsed_at }}",
+        "options": {}
+      },
+      "id": "b1b2c3d4-e5f6-7890-abcd-200000000007",
+      "name": "Discord Pass Notify",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [1490, 100],
+      "credentials": {
+        "discordWebhookApi": {
+          "id": "[REPLACE_CREDENTIAL_ID]",
+          "name": "[REPLACE] Pipeline Discord Webhook"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "webhook",
+        "content": "=**PIPELINE FAILURE: Node {{ $json.node_number }} ({{ $json.task_name }})**\n\nStatus: FAIL\nBatch: {{ $json.batch_number }}\nTask ID: {{ $json.task_id }}\nReport: {{ $json.file_path }}\n\nIssues Found:\n{{ $json.issues.length > 0 ? $json.issues.map(i => '- ' + i).join('\\n') : '- No issues parsed from report' }}\n\nCross-Stream Alerts:\n{{ $json.cross_stream_alerts.length > 0 ? $json.cross_stream_alerts.map(a => '- ' + a).join('\\n') : '- None' }}\n\n**ACTION REQUIRED: Manual review needed. Pipeline halted for this workstream.**",
+        "options": {}
+      },
+      "id": "b1b2c3d4-e5f6-7890-abcd-200000000008",
+      "name": "Discord Fail Alert",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [1240, 400],
+      "credentials": {
+        "discordWebhookApi": {
+          "id": "[REPLACE_CREDENTIAL_ID]",
+          "name": "[REPLACE] Pipeline Discord Webhook"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "webhook",
+        "content": "=**PIPELINE PARTIAL: Node {{ $json.node_number }} ({{ $json.task_name }})**\n\nStatus: PARTIAL\nBatch: {{ $json.batch_number }}\nTask ID: {{ $json.task_id }}\nReport: {{ $json.file_path }}\n\nIssues Found:\n{{ $json.issues.length > 0 ? $json.issues.map(i => '- ' + i).join('\\n') : '- No issues parsed from report' }}\n\nFiles Changed:\n{{ $json.files_changed.length > 0 ? $json.files_changed.map(f => '- ' + f).join('\\n') : '- None listed' }}\n\n**DECISION REQUIRED: Reply with action — retry / skip / manual-fix**",
+        "options": {}
+      },
+      "id": "b1b2c3d4-e5f6-7890-abcd-200000000009",
+      "name": "Discord Partial Alert",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [1240, 600],
+      "credentials": {
+        "discordWebhookApi": {
+          "id": "[REPLACE_CREDENTIAL_ID]",
+          "name": "[REPLACE] Pipeline Discord Webhook"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// STOP node — log that pipeline is halted\nconst data = $input.first().json;\n\nreturn [{\n  json: {\n    action: 'PIPELINE_HALTED',\n    reason: `Node ${data.node_number} failed with status: ${data.status}`,\n    task_id: data.task_id,\n    batch: data.batch_number,\n    halted_at: new Date().toISOString(),\n    requires: 'manual_review'\n  }\n}];"
+      },
+      "id": "b1b2c3d4-e5f6-7890-abcd-200000000010",
+      "name": "Halt Pipeline",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1490, 400]
+    }
+  ],
+  "connections": {
+    "Watch Report Files": {
+      "main": [
+        [
+          {
+            "node": "Parse Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Report": {
+      "main": [
+        [
+          {
+            "node": "Is Valid Report?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Valid Report?": {
+      "main": [
+        [
+          {
+            "node": "Status is PASS?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Status is FAIL?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Status is PASS?": {
+      "main": [
+        [
+          {
+            "node": "Determine Next Task",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status is FAIL?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status is FAIL?": {
+      "main": [
+        [
+          {
+            "node": "Discord Fail Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Discord Partial Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Determine Next Task": {
+      "main": [
+        [
+          {
+            "node": "Discord Pass Notify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Discord Fail Alert": {
+      "main": [
+        [
+          {
+            "node": "Halt Pipeline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "delegation-chain-v1-2026-02-22",
+  "meta": {
+    "instanceId": "[REPLACE_N8N_INSTANCE_ID]",
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [
+    {
+      "name": "ai-pipeline"
+    },
+    {
+      "name": "delegation"
+    }
+  ],
+  "pinData": {}
+}

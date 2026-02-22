@@ -1,0 +1,205 @@
+{
+  "name": "Cache Health Check",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 90
+            }
+          ]
+        }
+      },
+      "id": "c1b2c3d4-e5f6-7890-abcd-300000000001",
+      "name": "Every 90 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://generativelanguage.googleapis.com/v1beta/cachedContents",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-goog-api-key",
+              "value": "[REPLACE_GEMINI_API_KEY]"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "c1b2c3d4-e5f6-7890-abcd-300000000002",
+      "name": "Fetch Gemini Caches",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [490, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Verify required caches exist\nconst response = $input.first().json;\nconst requiredCaches = ['project-kb', 'project-deliverables'];\n\nlet cacheList = [];\nlet apiError = false;\n\ntry {\n  if (response.body && response.body.cachedContents) {\n    cacheList = response.body.cachedContents;\n  } else if (response.cachedContents) {\n    cacheList = response.cachedContents;\n  } else if (response.statusCode && response.statusCode !== 200) {\n    apiError = true;\n  }\n} catch (e) {\n  apiError = true;\n}\n\nconst existingNames = cacheList.map(c => c.displayName || c.name || '');\n\nconst missingCaches = requiredCaches.filter(req => {\n  return !existingNames.some(existing => \n    existing.toLowerCase().includes(req.toLowerCase())\n  );\n});\n\n// Check for expired caches (within 30 min of expiry)\nconst soonExpiring = [];\nconst now = new Date();\nconst thirtyMinMs = 30 * 60 * 1000;\n\ncacheList.forEach(cache => {\n  if (cache.expireTime) {\n    const expiry = new Date(cache.expireTime);\n    if (expiry - now < thirtyMinMs && expiry > now) {\n      soonExpiring.push({\n        name: cache.displayName || cache.name,\n        expires_at: cache.expireTime,\n        minutes_remaining: Math.round((expiry - now) / 60000)\n      });\n    }\n  }\n});\n\nreturn [{\n  json: {\n    api_error: apiError,\n    total_caches: cacheList.length,\n    existing_names: existingNames,\n    required_caches: requiredCaches,\n    missing_caches: missingCaches,\n    soon_expiring: soonExpiring,\n    has_issues: apiError || missingCaches.length > 0 || soonExpiring.length > 0,\n    checked_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "c1b2c3d4-e5f6-7890-abcd-300000000003",
+      "name": "Verify Required Caches",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [740, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-issues",
+              "leftValue": "={{ $json.has_issues }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "c1b2c3d4-e5f6-7890-abcd-300000000004",
+      "name": "Cache Issues Detected?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [990, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "webhook",
+        "content": "=**Cache Health Alert**\n\n{{ $json.api_error ? 'Gemini API Error — could not retrieve cache list\\n' : '' }}{{ $json.missing_caches.length > 0 ? 'Missing Caches:\\n' + $json.missing_caches.map(c => '- ' + c).join('\\n') + '\\n' : '' }}{{ $json.soon_expiring.length > 0 ? 'Expiring Soon:\\n' + $json.soon_expiring.map(c => '- ' + c.name + ' (' + c.minutes_remaining + ' min remaining)').join('\\n') + '\\n' : '' }}\nTotal Active Caches: {{ $json.total_caches }}\nChecked At: {{ $json.checked_at }}\n\nAuto-rebuild initiated for missing caches.",
+        "options": {}
+      },
+      "id": "c1b2c3d4-e5f6-7890-abcd-300000000005",
+      "name": "Discord Cache Alert",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [1240, 200],
+      "credentials": {
+        "discordWebhookApi": {
+          "id": "[REPLACE_CREDENTIAL_ID]",
+          "name": "[REPLACE] Pipeline Discord Webhook"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "#!/bin/bash\n# Rebuild missing Gemini caches\ncd /root/ai-agent-pipeline\n\nMISSING='{{ $json.missing_caches.join(\",\") }}'\nLOG_FILE=\"/var/log/cache-rebuild-$(date +%Y%m%d-%H%M%S).log\"\n\necho \"Cache rebuild started at $(date)\" > \"$LOG_FILE\"\n\nif echo \"$MISSING\" | grep -q 'project-kb'; then\n  echo \"Rebuilding project-kb cache...\" >> \"$LOG_FILE\"\n  # Concatenate key knowledge base files\n  cat ARCHITECTURE.md STRATEGY.md GTG1002_ANALYSIS.md > /tmp/project-kb-content.md 2>> \"$LOG_FILE\"\n  # Use Gemini API to create cache (replace with actual cache creation script)\n  if [ -f scripts/rebuild-cache.sh ]; then\n    bash scripts/rebuild-cache.sh project-kb /tmp/project-kb-content.md >> \"$LOG_FILE\" 2>&1\n  else\n    echo \"WARN: scripts/rebuild-cache.sh not found — manual rebuild required\" >> \"$LOG_FILE\"\n  fi\nfi\n\nif echo \"$MISSING\" | grep -q 'project-deliverables'; then\n  echo \"Rebuilding project-deliverables cache...\" >> \"$LOG_FILE\"\n  # Concatenate all reports and deliverables\n  find reports/ -name '*.md' -exec cat {} + > /tmp/project-deliverables-content.md 2>> \"$LOG_FILE\"\n  if [ -f scripts/rebuild-cache.sh ]; then\n    bash scripts/rebuild-cache.sh project-deliverables /tmp/project-deliverables-content.md >> \"$LOG_FILE\" 2>&1\n  else\n    echo \"WARN: scripts/rebuild-cache.sh not found — manual rebuild required\" >> \"$LOG_FILE\"\n  fi\nfi\n\n# Also refresh any soon-to-expire caches\nSOON_EXPIRING='{{ $json.soon_expiring.map(c => c.name).join(\",\") }}'\nif [ -n \"$SOON_EXPIRING\" ] && [ \"$SOON_EXPIRING\" != \"\" ]; then\n  echo \"Refreshing soon-expiring caches: $SOON_EXPIRING\" >> \"$LOG_FILE\"\n  if [ -f scripts/refresh-cache.sh ]; then\n    bash scripts/refresh-cache.sh \"$SOON_EXPIRING\" >> \"$LOG_FILE\" 2>&1\n  fi\nfi\n\necho \"Cache rebuild completed at $(date)\" >> \"$LOG_FILE\"\ncat \"$LOG_FILE\""
+      },
+      "id": "c1b2c3d4-e5f6-7890-abcd-300000000006",
+      "name": "Rebuild Missing Caches",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [1240, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Silent success — no action needed\n// Log for audit purposes\nreturn [{\n  json: {\n    action: 'CACHE_CHECK_OK',\n    total_caches: $input.first().json.total_caches,\n    checked_at: $input.first().json.checked_at,\n    message: 'All required caches present and healthy'\n  }\n}];"
+      },
+      "id": "c1b2c3d4-e5f6-7890-abcd-300000000007",
+      "name": "No Action Needed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1240, 550]
+    }
+  ],
+  "connections": {
+    "Every 90 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Fetch Gemini Caches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Gemini Caches": {
+      "main": [
+        [
+          {
+            "node": "Verify Required Caches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Required Caches": {
+      "main": [
+        [
+          {
+            "node": "Cache Issues Detected?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cache Issues Detected?": {
+      "main": [
+        [
+          {
+            "node": "Discord Cache Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Rebuild Missing Caches",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Action Needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "cache-monitor-v1-2026-02-22",
+  "meta": {
+    "instanceId": "[REPLACE_N8N_INSTANCE_ID]",
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [
+    {
+      "name": "ai-pipeline"
+    },
+    {
+      "name": "monitoring"
+    }
+  ],
+  "pinData": {}
+}

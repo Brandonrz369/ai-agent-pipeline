@@ -1,0 +1,81 @@
+# ===========================
+# Node.js
+# ===========================
+node_modules/
+dist/
+*.js.map
+coverage/
+.npm
+.yarn/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ===========================
+# TypeScript
+# ===========================
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# ===========================
+# Python
+# ===========================
+__pycache__/
+*.py[cod]
+*.pyc
+*.pyo
+.venv/
+venv/
+.Python
+*.egg-info/
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ===========================
+# Environment / Secrets
+# ===========================
+.env
+.env.local
+.env.*.local
+*.secret
+credentials.json
+
+# ===========================
+# Logs
+# ===========================
+*.log
+audit.log
+logs/
+
+# ===========================
+# OS
+# ===========================
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ===========================
+# IDE
+# ===========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ===========================
+# N8n
+# ===========================
+.n8n/
+
+# ===========================
+# Temp
+# ===========================
+/tmp/
+*.tmp
+
+# ===========================
+# Docker
+# ===========================
+.docker/

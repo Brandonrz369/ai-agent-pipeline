@@ -1,0 +1,231 @@
+{
+  "name": "Git Commit Automation (Audit Trail)",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "/root/ai-agent-pipeline/reports/",
+        "events": ["add", "change"],
+        "options": {
+          "ignored": "**/.gitkeep"
+        }
+      },
+      "id": "d1b2c3d4-e5f6-7890-abcd-400000000001",
+      "name": "Watch Report Files",
+      "type": "n8n-nodes-base.localFileTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse report and extract relevant data for git commit\nconst fs = require('fs');\nconst filePath = $input.first().json.path;\nconst fileName = filePath.split('/').pop();\n\n// Validate file matches expected pattern: *_batch*.md\nconst batchPattern = /(.+)_batch(\\d+)\\.md$/;\nconst match = fileName.match(batchPattern);\n\nif (!match) {\n  return [{ json: { should_commit: false, reason: 'Not a batch report file', file: fileName } }];\n}\n\nconst taskName = match[1];\nconst batchNumber = parseInt(match[2]);\n\nconst content = fs.readFileSync(filePath, 'utf8');\n\n// Parse status\nlet status = 'UNKNOWN';\nconst statusMatch = content.match(/##\\s*Status:\\s*(PASS|FAIL|PARTIAL|BLOCKED)/i);\nif (statusMatch) {\n  status = statusMatch[1].toUpperCase();\n}\n\n// Parse task ID\nlet taskId = 'UNKNOWN';\nconst taskIdMatch = content.match(/##\\s*Task\\s*ID:\\s*(\\S+)/i);\nif (taskIdMatch) {\n  taskId = taskIdMatch[1];\n}\n\n// Parse files changed from CHANGES MADE section\nconst filesChanged = [];\nconst changesSection = content.match(/### CHANGES MADE[\\s\\S]*?(?=###|$)/i);\nif (changesSection) {\n  const lines = changesSection[0].split('\\n');\n  for (const line of lines) {\n    // Match patterns like: - [filepath]: description  OR  - filepath: description\n    const fileMatch = line.match(/^\\s*-\\s*\\[?([^\\]:\\n]+?)\\]?\\s*:/); \n    if (fileMatch) {\n      const fp = fileMatch[1].trim();\n      // Filter out non-file entries\n      if (fp && !fp.startsWith('#') && fp.includes('/') || fp.includes('.')) {\n        filesChanged.push(fp);\n      }\n    }\n  }\n}\n\n// Parse objective from report\nlet objective = taskName.replace(/_/g, ' ');\nconst objectiveMatch = content.match(/(?:objective|purpose|summary):\\s*(.+)/i);\nif (objectiveMatch) {\n  objective = objectiveMatch[1].trim();\n}\n\nreturn [{\n  json: {\n    should_commit: status === 'PASS',\n    status: status,\n    task_id: taskId,\n    task_name: taskName,\n    batch_number: batchNumber,\n    report_file: filePath,\n    file_name: fileName,\n    files_changed: filesChanged,\n    objective: objective,\n    parsed_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "d1b2c3d4-e5f6-7890-abcd-400000000002",
+      "name": "Parse Report for Commit",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [490, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "should-commit",
+              "leftValue": "={{ $json.should_commit }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "d1b2c3d4-e5f6-7890-abcd-400000000003",
+      "name": "Status is PASS?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [740, 300]
+    },
+    {
+      "parameters": {
+        "command": "={{ 'cd /root/ai-agent-pipeline && git add ' + ($json.files_changed.length > 0 ? $json.files_changed.join(' ') : '.') + ' ' + $json.report_file + ' 2>&1' }}"
+      },
+      "id": "d1b2c3d4-e5f6-7890-abcd-400000000004",
+      "name": "Git Add Files",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [990, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build the git commit command with a structured message\nconst data = $input.first().json;\n\n// Inherit parsed fields from the previous chain\n// Note: data comes from executeCommand output, so we use $('Parse Report for Commit')\nconst parsed = $('Parse Report for Commit').first().json;\n\nconst commitMsg = [\n  `Batch ${parsed.batch_number} [${parsed.task_id}]: ${parsed.objective}`,\n  '',\n  `Status: ${parsed.status}`,\n  `Report: ${parsed.file_name}`,\n  `Files: ${parsed.files_changed.length > 0 ? parsed.files_changed.join(', ') : 'report only'}`,\n  '',\n  `Automated commit by N8n audit trail workflow`,\n  `Timestamp: ${parsed.parsed_at}`\n].join('\\n');\n\nreturn [{\n  json: {\n    commit_message: commitMsg,\n    task_id: parsed.task_id,\n    batch_number: parsed.batch_number,\n    file_name: parsed.file_name,\n    files_changed: parsed.files_changed\n  }\n}];"
+      },
+      "id": "d1b2c3d4-e5f6-7890-abcd-400000000005",
+      "name": "Build Commit Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1240, 200]
+    },
+    {
+      "parameters": {
+        "command": "={{ 'cd /root/ai-agent-pipeline && git commit -m \"' + $json.commit_message.replace(/\"/g, '\\\\\"').replace(/\\n/g, '\\n') + '\" 2>&1' }}"
+      },
+      "id": "d1b2c3d4-e5f6-7890-abcd-400000000006",
+      "name": "Git Commit",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [1490, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Verify the commit succeeded and extract the commit hash\nconst output = $input.first().json.stdout || $input.first().json.stderr || '';\nconst commitData = $('Build Commit Message').first().json;\n\nlet commitHash = 'unknown';\nconst hashMatch = output.match(/\\[\\w+\\s+([a-f0-9]+)\\]/);\nif (hashMatch) {\n  commitHash = hashMatch[1];\n}\n\nconst success = output.includes('file changed') || \n                output.includes('files changed') || \n                output.includes('insertions') ||\n                output.includes('create mode');\n\nreturn [{\n  json: {\n    commit_success: success,\n    commit_hash: commitHash,\n    commit_output: output.substring(0, 500),\n    task_id: commitData.task_id,\n    batch_number: commitData.batch_number,\n    file_name: commitData.file_name,\n    files_committed: commitData.files_changed,\n    committed_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "d1b2c3d4-e5f6-7890-abcd-400000000007",
+      "name": "Verify Commit",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1740, 200]
+    },
+    {
+      "parameters": {
+        "authentication": "webhook",
+        "content": "=**Git Audit: Committed Batch {{ $json.batch_number }}**\n\nTask ID: {{ $json.task_id }}\nCommit: `{{ $json.commit_hash }}`\nReport: {{ $json.file_name }}\nFiles: {{ $json.files_committed.length > 0 ? $json.files_committed.join(', ') : 'report only' }}\n{{ $json.commit_success ? 'Commit successful.' : 'WARNING: Commit may have failed — check output.' }}\n\nTimestamp: {{ $json.committed_at }}",
+        "options": {}
+      },
+      "id": "d1b2c3d4-e5f6-7890-abcd-400000000008",
+      "name": "Discord Commit Notify",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [1990, 200],
+      "credentials": {
+        "discordWebhookApi": {
+          "id": "[REPLACE_CREDENTIAL_ID]",
+          "name": "[REPLACE] Pipeline Discord Webhook"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Non-PASS status — skip commit, log reason\nconst data = $input.first().json;\n\nreturn [{\n  json: {\n    action: 'SKIP_COMMIT',\n    reason: `Report status is ${data.status} (not PASS) — no git commit`,\n    task_id: data.task_id,\n    batch_number: data.batch_number,\n    report_file: data.report_file,\n    skipped_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "d1b2c3d4-e5f6-7890-abcd-400000000009",
+      "name": "Skip Non-PASS",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [990, 450]
+    }
+  ],
+  "connections": {
+    "Watch Report Files": {
+      "main": [
+        [
+          {
+            "node": "Parse Report for Commit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Report for Commit": {
+      "main": [
+        [
+          {
+            "node": "Status is PASS?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status is PASS?": {
+      "main": [
+        [
+          {
+            "node": "Git Add Files",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip Non-PASS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Git Add Files": {
+      "main": [
+        [
+          {
+            "node": "Build Commit Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Commit Message": {
+      "main": [
+        [
+          {
+            "node": "Git Commit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Git Commit": {
+      "main": [
+        [
+          {
+            "node": "Verify Commit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Commit": {
+      "main": [
+        [
+          {
+            "node": "Discord Commit Notify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "audit-trail-v1-2026-02-22",
+  "meta": {
+    "instanceId": "[REPLACE_N8N_INSTANCE_ID]",
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [
+    {
+      "name": "ai-pipeline"
+    },
+    {
+      "name": "git-audit"
+    }
+  ],
+  "pinData": {}
+}
