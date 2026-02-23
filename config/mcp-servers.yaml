@@ -1,0 +1,75 @@
+# MCP Server Registry
+# All MCP servers available to pipeline agents, including brain-damage-prevention cache
+# Reference: docs/phase5-mcp-execution.md, docs/anti-loop-safeguards.md
+
+# ── Core MCP Servers (from Phase 5) ──────────────────────────────
+
+servers:
+  filesystem:
+    description: "File system read/write operations"
+    command: "npx"
+    args: ["-y", "@anthropic/mcp-server-filesystem"]
+    available_to: ["orchestrator", "worker", "redteam", "supervisor"]
+    docker_image: null              # Runs natively
+    approved_digest: null
+
+  bash:
+    description: "Shell command execution"
+    command: "npx"
+    args: ["-y", "@anthropic/mcp-server-bash"]
+    available_to: ["worker", "supervisor"]
+    docker_image: null
+    approved_digest: null
+
+  github:
+    description: "GitHub API operations (PRs, issues, repos)"
+    command: "npx"
+    args: ["-y", "@anthropic/mcp-server-github"]
+    env:
+      GITHUB_TOKEN: "${GITHUB_TOKEN}"
+    available_to: ["orchestrator", "worker"]
+    docker_image: null
+    approved_digest: null
+
+  # ── Gemini MCP Servers ────────────────────────────────────────
+
+  gemini:
+    description: "Gemini API access — search, cache management, deep research"
+    command: "npx"
+    args: ["-y", "@rlabs-inc/gemini-mcp"]
+    env:
+      GEMINI_API_KEY: "${GEMINI_API_KEY}"
+      GEMINI_PRO_MODEL: "gemini-3.1-pro-preview"
+    available_to: ["orchestrator", "worker", "redteam", "supervisor"]
+    tools:
+      - gemini-search           # Web search via Gemini
+      - gemini-create-cache     # Create/update Gemini context cache
+      - gemini-search-cache     # Query cached context
+      - gemini-deep-research    # Deep research via Gemini API
+
+  gemini-cache:
+    description: "Brain-damage-prevention context cache. Offloads long-session context from Claude Code to Gemini Flash-Lite for compression and retrieval."
+    command: "node"
+    args: ["gemini-cache-mcp/index.js"]
+    env:
+      GEMINI_API_KEY: "${GEMINI_API_KEY}"
+      GEMINI_MODEL: "gemini-2.5-flash-lite"
+      MAX_SUMMARY_TOKENS: "200"
+    available_to: ["worker", "supervisor"]
+    tools:
+      - store_context           # Send raw context → Gemini compresses → stores summary + full
+      - get_summary             # Retrieve compressed summary by key
+    notes: |
+      This server enables brain-damage-prevention for long-running Claude Code sessions.
+      Workers and supervisors call store_context every ~5 actions to offload stale context.
+      Target: keep Claude Code active context under ~50K tokens.
+      Cache key format: {task_id}-{session_id}-{block_name}
+
+# ── Access Control Matrix ─────────────────────────────────────────
+# Cross-reference: security/rbac-config.md
+
+access_matrix:
+  orchestrator:   [filesystem, github, gemini]
+  worker:         [filesystem, bash, github, gemini, gemini-cache]
+  redteam:        [filesystem, gemini]
+  supervisor:     [filesystem, bash, gemini, gemini-cache]

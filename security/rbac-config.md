@@ -53,46 +53,50 @@ Permissions are **deny by default**: if not explicitly granted, the action is fo
 | Node 3 | Worker (Workstream C) | Implementation work on assigned module/domain |
 | Node 4 | Worker (Workstream D) | Security, documentation, or specialized work |
 | Node 5 | Red Team | Adversarial review, quality assurance, claim verification |
+| Node 6+ | Supervisor (Computer Use) | GUI task execution via SUPERVISE mode — vision, mouse, keyboard |
 
 ### 2.2 Permission Matrix (Table)
 
-| Resource / Action | Node 0 (Orchestrator) | N1-N4 (Workers) | Node 5 (Red Team) |
-|---|---|---|---|
-| **READ** | | | |
-| `src/*` | YES (all) | OWN workstream only | YES (all) |
-| `docs/*` | YES | YES | YES |
-| `schemas/*` | YES | YES | YES |
-| `prompts/*` | YES | OWN task files only | YES |
-| `reports/*` | YES | OWN reports only | YES (all) |
-| `templates/*` | YES | YES | YES |
-| `.env`, `*.secret` | NO | NO | NO |
-| `node_modules/` | NO | NO | NO |
-| Gemini cache | YES | YES (read-only) | YES (read-only) |
-| Audit log | YES | NO | YES |
-| | | | |
-| **WRITE** | | | |
-| `prompts/*` | YES | NO | NO |
-| `STRATEGY.md` | YES | NO | NO |
-| `reports/*` | NO | OWN report file only | `reports/redteam_*` only |
-| `src/*` | NO | OWN workstream only | NO |
-| `tests/*` | NO | OWN workstream only | NO |
-| `security/*` | NO | Node 4 only | NO |
-| `docs/*` | NO | If in task scope | NO |
-| `.env`, `*.secret` | NO | NO | NO |
-| Gemini cache | NO | NO | NO |
-| Audit log | APPEND only | APPEND only | APPEND only |
-| | | | |
-| **EXECUTE** | | | |
-| `npm test` | NO | OWN module scope | NO |
-| `git add + commit` | NO | OWN files only | NO |
-| `git push` | NO (requires HITL) | NO | NO |
-| Arbitrary bash | NO | NO | NO |
-| Schema validation | YES | YES | YES |
-| | | | |
-| **APPROVE** | | | |
-| HITL gates | NO (human only) | NO | NO |
-| External sends | NO (human only) | NO | NO |
-| Deploys | NO (human only) | NO | NO |
+| Resource / Action | Node 0 (Orchestrator) | N1-N4 (Workers) | Node 5 (Red Team) | Node 6+ (Supervisor) |
+|---|---|---|---|---|
+| **READ** | | | | |
+| `src/*` | YES (all) | OWN workstream only | YES (all) | YES (all) |
+| `docs/*` | YES | YES | YES | YES |
+| `schemas/*` | YES | YES | YES | YES |
+| `prompts/*` | YES | OWN task files only | YES | OWN task only |
+| `reports/*` | YES | OWN reports only | YES (all) | OWN reports only |
+| `templates/*` | YES | YES | YES | YES |
+| `.env`, `*.secret` | NO | NO | NO | NO |
+| `node_modules/` | NO | NO | NO | NO |
+| Gemini cache | YES | YES (read-only) | YES (read-only) | YES (read/write via MCP) |
+| Audit log | YES | NO | YES | NO |
+| | | | | |
+| **WRITE** | | | | |
+| `prompts/*` | YES | NO | NO | NO |
+| `STRATEGY.md` | YES | NO | NO | NO |
+| `reports/*` | NO | OWN report file only | `reports/redteam_*` only | `reports/n6_*` only |
+| `src/*` | NO | OWN workstream only | NO | NO |
+| `tests/*` | NO | OWN workstream only | NO | NO |
+| `security/*` | NO | Node 4 only | NO | NO |
+| `docs/*` | NO | If in task scope | NO | NO |
+| `screenshots/*` | NO | NO | NO | YES (audit) |
+| `.env`, `*.secret` | NO | NO | NO | NO |
+| Gemini cache | NO | NO | NO | YES (via store_context MCP) |
+| Audit log | APPEND only | APPEND only | APPEND only | APPEND only |
+| | | | | |
+| **EXECUTE** | | | | |
+| `npm test` | NO | OWN module scope | NO | NO |
+| `git add + commit` | NO | OWN files only | NO | NO |
+| `git push` | NO (requires HITL) | NO | NO | NO |
+| Arbitrary bash | NO | NO | NO | YES (within task scope) |
+| Computer Use | NO | NO | NO | YES (HITL-013 required) |
+| Credential entry | NO | NO | NO | YES (HITL-014 CRITICAL) |
+| Schema validation | YES | YES | YES | YES |
+| | | | | |
+| **APPROVE** | | | | |
+| HITL gates | NO (human only) | NO | NO | NO |
+| External sends | NO (human only) | NO | NO | NO |
+| Deploys | NO (human only) | NO | NO | NO |
 
 ### 2.3 Key Constraints
 
@@ -291,6 +295,39 @@ nodes:
     requires_approval:
       - "*"                    # Every action beyond reading requires approval
     command_allowlist: []       # No commands allowed
+
+  supervisor:
+    node_id: 6
+    role: "supervisor"
+    description: "Computer Use agent for GUI-only tasks. Vision + mouse + keyboard. Runs in SUPERVISE mode."
+    read:
+      - "*"                    # Full read access needed for context
+    read_deny:
+      - ".env"
+      - "*.secret"
+      - "credentials.*"
+      - "node_modules/"
+    write:
+      - "reports/n6_*"         # Supervisor report files
+      - "screenshots/"         # Screenshot audit trail
+    execute:
+      - "computer_use"         # Vision + mouse + keyboard (requires HITL-013)
+      - "bash"                 # Shell commands within task scope
+    requires_approval:
+      - "credential_entry"     # HITL-014 CRITICAL — always requires human approval
+      - "payment_page"         # Emergency stop on payment/purchase pages
+      - "download *"           # Downloads require approval
+      - "install *"            # Software installation requires approval
+    command_allowlist:
+      - "screenshot"           # Take screenshot
+      - "click"                # Mouse click at coordinates
+      - "type"                 # Keyboard input
+      - "scroll"               # Scroll action
+      - "store_context"        # MCP: offload context to Gemini cache
+      - "get_summary"          # MCP: retrieve compressed context
+    mcp_servers:
+      - "gemini-cache"         # Brain damage prevention
+      - "filesystem"           # File read/write
 ```
 
 ### 3.2 Workstream-to-Directory Mapping Template

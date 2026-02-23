@@ -84,6 +84,29 @@ _If YES: The worker must set status to PARTIAL and wait. The Orchestrator will r
 
 ---
 
+## ENVELOPE (Optional — Anti-Loop Safeguards)
+_Populated by the Gemini orchestrator for tasks running through the completion loop._
+_If absent, the task runs without anti-loop tracking (legacy/manual dispatch)._
+
+| Field                  | Value                          |
+|------------------------|--------------------------------|
+| TTL Max                | [10]                           |
+| Current Hops           | [0]                            |
+| Mode                   | [EXECUTE / ARCHITECT / SUPERVISE] |
+| Escalated              | [YES / NO]                     |
+| Consecutive Failures   | [0]                            |
+| Consecutive Successes  | [0]                            |
+| MCP Cache Key          | [task_id-session_id-block]     |
+
+**State Hashes:** _(SHA-256 of target files at each hop boundary)_
+- Hop 0: [hash]
+- Hop 1: [hash]
+- _(appended by Claude Code after each execution)_
+
+**Schema:** `schemas/task-envelope.schema.json`
+
+---
+
 ## CROSS-REFERENCE
 **Corresponding JSON blueprint:** `prompts/[JSON_FILENAME].json`
 **Schema:** `schemas/task-blueprint.schema.json`

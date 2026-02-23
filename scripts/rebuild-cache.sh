@@ -48,6 +48,24 @@ case "$CACHE_NAME" in
     echo "PLACEHOLDER: gemini-create-cache filePath:$TMP_DIR/pipeline-deliverables.txt displayName:pipeline-deliverables ttlMinutes:120"
     ;;
 
+  brain-context)
+    # Brain damage prevention cache is dynamic — populated by agents via MCP store_context calls.
+    # This case clears stale entries and creates an empty placeholder cache.
+    echo "NOTE: brain-context cache is dynamically populated via MCP store_context calls."
+    echo "Creating empty placeholder cache for initialization."
+    cat > "$TMP_DIR/brain-context.txt" <<BRAIN_EOF
+{
+  "type": "brain-damage-prevention",
+  "description": "Dynamic cache for Claude Code session context offloading",
+  "created": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "cache_key_format": "{task_id}-{session_id}-{block_name}",
+  "max_summary_tokens": 200,
+  "compression_model": "gemini-2.5-flash-lite"
+}
+BRAIN_EOF
+    echo "PLACEHOLDER: gemini-create-cache filePath:$TMP_DIR/brain-context.txt displayName:brain-context ttlMinutes:1440"
+    ;;
+
   *)
     echo "ERROR: Unknown cache name '$CACHE_NAME'. Check config/required-caches.yaml."
     exit 1

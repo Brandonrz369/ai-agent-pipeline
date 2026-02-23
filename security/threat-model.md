@@ -391,6 +391,83 @@ hallucination propagates before detection, the more work must be discarded and r
 
 ---
 
+### 3.7 Infinite Loop / Resource Exhaustion via Retry Storms
+
+**Description:** A task enters a failure-retry loop where each retry fails identically,
+burning API tokens and stalling the pipeline indefinitely.
+
+**Attack scenario:**
+1. A task fails due to a fundamental misunderstanding (wrong file path, missing dependency).
+2. The retry mechanism re-dispatches the identical task.
+3. Each retry fails for the same reason, incrementing cost without progress.
+4. Without safeguards, this continues until daily budget is exhausted.
+
+**Likelihood:** HIGH -- this is the most common real-world failure in agentic systems.
+
+**Impact:** MEDIUM -- financial (API token burn) and operational (pipeline stall).
+
+**Prevention controls:**
+- Task envelope TTL: maximum 10 hops, dead-letter on expiry (see `schemas/task-envelope.schema.json`)
+- Hysteresis: 3 consecutive failures trigger escalation to ARCHITECT mode
+- Handshake detection: hash file state before/after; if unchanged, task made no progress
+- Backflow detection: block A-B-A cycles where task state reverts to a previous hash
+- Dead-letter queue with push notification for expired tasks
+- Flash-Lite verification after each execution for early failure detection
+
+**Cross-references:**
+- `docs/anti-loop-safeguards.md` -- full safeguard documentation
+- `config/openclaw-config.yaml` -- TTL and hysteresis configuration
+- `schemas/task-envelope.schema.json` -- envelope schema
+
+**Response procedures:**
+1. Dead-lettered tasks are written to `~/.openclaw/dead-letter/`
+2. Push notification sent to operator via Telegram/Discord
+3. Operator reviews the full task envelope, session logs, and error history
+4. Either fixes the root cause and re-dispatches, or marks the task as abandoned
+5. If the same task pattern dead-letters repeatedly, add it to the Red Team's failure catalog
+
+---
+
+### 3.8 Computer Use Safety Risks
+
+**Description:** An agent in SUPERVISE mode (Computer Use) has vision + mouse + keyboard
+access and could navigate to unintended locations, enter credentials in phishing sites,
+approve purchases, or take irreversible GUI actions.
+
+**Attack scenario:**
+1. A SUPERVISE task instructs Claude Code to register an account on a service.
+2. Claude Code navigates to a lookalike/phishing site instead of the real one.
+3. Credentials are entered on the malicious site.
+4. Alternatively: Claude Code misclicks and approves an unexpected purchase or subscription.
+
+**Likelihood:** MEDIUM -- Computer Use is a new attack surface unique to GUI interaction.
+Claude Code has vision but can be fooled by visually similar pages.
+
+**Impact:** HIGH -- actions taken via GUI (purchases, account changes, data entry) may be
+irreversible and can involve real money or credentials.
+
+**Prevention controls:**
+- HITL-013 gate required before ANY Computer Use session starts (HIGH severity)
+- HITL-014 gate (CRITICAL) required before any credential entry in Computer Use
+- Screenshot before AND after every action, stored in audit trail
+- Restricted URL allowlist for browser-based Computer Use tasks
+- Payment/purchase page detection triggers emergency stop
+- Computer Use sessions run in sandboxed environment when possible
+
+**Cross-references:**
+- `docs/computer-use.md` -- Computer Use documentation
+- `security/hitl-gates.md` -- HITL-013, HITL-014 gate definitions
+- `security/rbac-config.md` -- Supervisor node permissions
+
+**Response procedures:**
+1. If Computer Use takes an unexpected action: screenshot sequence is in audit trail
+2. Review the screenshot chain to identify the decision point
+3. Revert via GUI undo or manual correction
+4. If credentials were entered on wrong site: immediately rotate affected credentials
+5. Add the failure pattern to SUPERVISE mode training/examples
+
+---
+
 ## 4. ADDITIONAL THREATS
 
 ### 4.1 Data Exfiltration via Reports

@@ -379,6 +379,94 @@ const testResult = await runTests('auth');
 
 ---
 
+## Brain Damage Prevention (Context Offloading — V3 Integration)
+
+Long-running Claude Code sessions accumulate stale context that degrades performance.
+After ~20 minutes of continuous operation (especially in SUPERVISE mode with screenshots),
+Claude Code starts making mistakes as its context window fills with outdated information.
+This is "brain damage" — context rot from accumulated history.
+
+### The Solution: Gemini MCP Cache
+
+The `gemini-cache` MCP server exposes two tools for context offloading:
+
+| Tool | Purpose | Example |
+|------|---------|---------|
+| `store_context(key, context)` | Send raw context to Gemini Flash-Lite for compression and storage. Agent retains only the key and a ~200 token summary. | `store_context("TASK-2026-001-B1-N2-step5", "Full debug output from npm test...")` |
+| `get_summary(key)` | Retrieve the compressed summary for a key. Use when you need to recall what happened in an earlier phase. | `get_summary("TASK-2026-001-B1-N2-step5")` → "Tests failed: 3 auth tests, root cause was missing JWT_SECRET env var" |
+
+### How It Works
+
+```
+Claude Code starts executing a task
+    │
+    ├─── Takes actions, accumulates context
+    │
+    ├─── Every N steps (default 5, configurable):
+    │     1. Extract key facts from recent context
+    │     2. Call store_context via gemini-cache MCP:
+    │        "Summarize: [raw context from last 5 steps]"
+    │     3. Gemini Flash-Lite compresses to ~200 tokens
+    │     4. Store compressed summary in MCP cache
+    │
+    ├─── When Claude Code needs history:
+    │     1. Call get_summary: "What happened in steps 1-5?"
+    │     2. Get compressed summary (not raw history)
+    │     3. Current state + summary = lean context
+    │
+    └─── Result: Claude Code context stays under ~50K tokens
+           even for tasks that run 30+ minutes
+```
+
+### When to Offload
+
+The agent monitors its approximate token usage. When approaching ~50K tokens:
+1. Identify the least-recently-needed context blocks
+2. Call `store_context` with a summary of each block
+3. Replace the full context in the active window with just the key reference
+4. If the full context is needed later, call `get_summary` first
+
+### Cache Key Format
+
+```
+{task_id}-{session_id}-{block_name}
+```
+
+Example: `TASK-2026-042-B3-N2-session7a3f-debug_output`
+
+### Configuration
+
+The gemini-cache MCP server is defined in `config/mcp-servers.yaml`:
+
+```json
+"mcpServers": {
+  "gemini-cache": {
+    "command": "node",
+    "args": ["gemini-cache-mcp/index.js"],
+    "env": {
+      "GEMINI_API_KEY": "your-key",
+      "GEMINI_MODEL": "gemini-2.5-flash-lite",
+      "MAX_SUMMARY_TOKENS": "200"
+    }
+  }
+}
+```
+
+### Cost
+
+Gemini Flash-Lite: $0.10/$0.40 per MTok (input/output). A typical 30-minute session
+with 6 offloads costs approximately $0.003 in summarization. This is negligible compared
+to the quality improvement from keeping Claude Code's context lean.
+
+### Integration with Existing Caches
+
+The brain-damage-prevention cache (`brain-context`) is registered in `config/required-caches.yaml`
+alongside the existing `pipeline-kb` and `pipeline-deliverables` caches. Unlike those static
+caches, `brain-context` is dynamic — populated by agents during execution, not rebuilt from
+source files.
+
+---
+
 ## What Comes Next
 
 Reliable execution is only safe if the system prevents misuse. [Phase 6: Security

@@ -49,6 +49,8 @@ the primary risk vector.
 | HITL-010 | MCP server image update | HIGH | Discord #approvals | 120 min | BLOCK |
 | HITL-011 | RBAC scope expansion request | MEDIUM | Discord #approvals | 60 min | BLOCK |
 | HITL-012 | Batch retry after 2 consecutive failures | MEDIUM | Discord #approvals | 60 min | BLOCK |
+| HITL-013 | Computer Use session start | HIGH | Discord #approvals | 30 min | BLOCK |
+| HITL-014 | Computer Use credential entry | CRITICAL | Discord #approvals + SMS | 15 min | BLOCK |
 
 ### 2.2 Gate Severity Levels
 
@@ -584,6 +586,53 @@ gates:
       - "failure_count"
       - "failure_reasons"
       - "estimated_cost"
+
+  HITL-013:
+    name: "Computer Use Session"
+    trigger_pattern: "computer_use_start"
+    trigger_condition: "mode == SUPERVISE"
+    severity: "HIGH"
+    timeout_minutes: 30
+    default_on_timeout: "block"
+    notification:
+      channel: "discord"
+      mention: "@here"
+      reminder_at_minutes: 20
+    context_fields:
+      - "task_id"
+      - "target_application"
+      - "task_objective"
+      - "url_allowlist"
+      - "estimated_actions"
+    notes: |
+      Required before any Computer Use session starts. The operator must verify
+      the target application, URL allowlist, and task objective before granting
+      Claude Code vision + mouse + keyboard access.
+
+  HITL-014:
+    name: "Computer Use Credential Entry"
+    trigger_pattern: "credential_entry"
+    trigger_condition: "mode == SUPERVISE AND action_type == credential_input"
+    severity: "CRITICAL"
+    timeout_minutes: 15
+    default_on_timeout: "block"
+    override_allowed: false
+    notification:
+      channel: "discord"
+      mention: "@here"
+      sms: true
+      reminder_at_minutes: 10
+    context_fields:
+      - "task_id"
+      - "target_site"
+      - "credential_type"
+      - "screenshot"
+      - "url_verified"
+    notes: |
+      CRITICAL gate — no override allowed. Any time Claude Code in SUPERVISE mode
+      needs to enter credentials (passwords, tokens, API keys), this gate fires.
+      The operator MUST verify the target URL matches the expected site (not phishing)
+      and that the credential type is appropriate for the task.
 
 # Auto-approved actions (skip HITL entirely)
 auto_approved:

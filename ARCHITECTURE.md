@@ -562,9 +562,160 @@ mcp-verify --tool filesystem --signature ./signatures/filesystem.sig
 
 ---
 
+## PHASE 7: GATEWAY, COMPLETION LOOP & ANTI-LOOP SAFEGUARDS (V3 Integration)
+
+Phase 7 integrates the V3 Two-Tier Blueprint: an OpenClaw gateway for always-on
+access, a Gemini-driven inner completion loop for per-task execution quality, three
+Claude Code prompt modes (EXECUTE/ARCHITECT/SUPERVISE), anti-loop safeguards for
+bounded termination, Computer Use for GUI tasks, and brain damage prevention via
+MCP context offloading.
+
+**Key insight:** Phases 1-6 define WHAT the pipeline does. Phase 7 defines HOW it
+runs autonomously — driving retries, switching strategies on failure, managing long
+sessions, and providing always-on access from any device.
+
+### 7.1 The OpenClaw Gateway
+
+OpenClaw is the always-on ingress daemon. It receives user requests from mobile
+(Happy Coder app), Telegram, Discord, or browser (Claude Code Remote), and routes
+them to the Gemini 3.1 Pro orchestrator.
+
+```
+User (Phone / Telegram / Discord / Browser)
+    │
+    ▼
+OPENCLAW GATEWAY (always running on your machine)
+    │
+    ▼
+GEMINI 3.1 PRO (orchestrator — traffic cop, NOT the brain)
+    │── Classifies task type (code / GUI / simple tool)
+    │── Selects prompt mode (EXECUTE / ARCHITECT / SUPERVISE)
+    │── Formats Claude Code prompt from templates/
+    │── Drives the completion loop (retry, escalate, verify)
+    │── Summarizes results for mobile display
+    │
+    ▼
+CLAUDE CODE (the brain + executor + supervisor)
+    │── EXECUTE: Write code, edit files, run commands
+    │── ARCHITECT: Deep reasoning, failure analysis (read-only)
+    │── SUPERVISE: Vision + mouse + keyboard for GUI tasks
+    │
+    ▼
+Results → Gemini → User
+```
+
+Gemini does NOT think hard. It routes, formats, and drives the loop.
+Claude Code does ALL the intellectual work.
+
+**Configuration:** `config/openclaw-config.yaml`
+**Full documentation:** `docs/openclaw-gateway.md`
+
+### 7.2 Three Prompt Modes
+
+Claude Code wears three hats depending on the prompt mode. Same tool, same
+subscription — just different prompt framings and tool permissions.
+
+| Mode | When | Tools | Purpose |
+|------|------|-------|---------|
+| **EXECUTE** | First attempt, or post-blueprint | Bash, Read, Write, Edit, MCP | Write code, edit files, run commands |
+| **ARCHITECT** | After 3 consecutive failures | Read only | Root cause analysis, produce blueprint |
+| **SUPERVISE** | GUI tasks needing vision | Computer Use + Bash + MCP | Screenshot→analyze→act→verify loop |
+
+Mode selection is handled by Gemini. Claude Code never self-selects a mode.
+
+**Templates:** `templates/execute-prompt.md`, `templates/architect-prompt.md`, `templates/supervise-prompt.md`
+**Full documentation:** `docs/prompt-modes.md`
+
+### 7.3 The Inner Completion Loop
+
+The completion loop runs INSIDE each N8n sub-workflow, managing per-task execution
+quality. N8n is the outer loop (batch orchestration); the completion loop is the
+inner loop (task-level retry/escalation).
+
+```
+N8n fan-out dispatches task to completion loop:
+    │
+    ├─→ Gemini formats prompt (mode selected)
+    ├─→ Claude Code executes
+    ├─→ Flash-Lite verifies (PASS / RETRY / ESCALATE)
+    │     │
+    │     ├─ PASS → Return result to N8n fan-in
+    │     ├─ RETRY → Anti-loop check → adjust prompt → retry
+    │     └─ ESCALATE → Dead-letter → notify operator
+    │
+    └─→ Each fan-out branch retries independently
+```
+
+**Full documentation:** `docs/completion-loop.md`
+
+### 7.4 Computer Use (SUPERVISE Mode)
+
+For tasks that require desktop interaction — installing apps, navigating wizards,
+registering accounts — Claude Code uses Computer Use with vision + mouse + keyboard.
+
+The screenshot→analyze→act→verify loop runs every action through visual confirmation.
+Every 5 steps, context is offloaded to Gemini MCP cache to prevent brain damage.
+
+Safety: HITL-013 (HIGH) required before any Computer Use session. HITL-014 (CRITICAL)
+required for any credential entry.
+
+**Full documentation:** `docs/computer-use.md`
+
+### 7.5 Anti-Loop Safeguards
+
+Three laws guarantee bounded termination:
+
+1. **TTL:** Every task has a maximum hop count (default 10). Expired → dead-letter queue.
+2. **Hysteresis:** 3 consecutive failures → ARCHITECT mode. 2 consecutive successes → de-escalate. No oscillation.
+3. **Backflow Detection:** Hash files before/after each hop. If post-hop hash matches any previous hash → cycle detected → dead-letter.
+
+Dead-lettered tasks go to `~/.openclaw/dead-letter/` with push notification to operator.
+
+**Schema:** `schemas/task-envelope.schema.json`
+**Full documentation:** `docs/anti-loop-safeguards.md`
+
+### 7.6 Brain Damage Prevention
+
+Long-running Claude Code sessions accumulate stale context ("brain damage").
+The solution: offload non-essential context to Gemini MCP cache via `store_context`,
+retrieve compressed summaries via `get_summary`.
+
+- Target: keep Claude Code context under ~50K tokens
+- Compression: Gemini Flash-Lite compresses to ~200 tokens per offload
+- Cost: ~$0.003 per 30-minute session
+- Cache: `brain-context` in `config/required-caches.yaml`
+
+**MCP server:** `gemini-cache` in `config/mcp-servers.yaml`
+**Full documentation:** `docs/phase5-mcp-execution.md` (Brain Damage Prevention section)
+
+### 7.7 Cost Model
+
+| Component | Type | Monthly Cost |
+|-----------|------|-------------|
+| Gemini 3.1 Pro (orchestrator) | Variable | $50–60 |
+| Gemini Flash-Lite (verifier + cache) | Variable | $1–3 |
+| Claude Code subscription (Pro/Max) | Fixed | $20–200 |
+| **TOTAL (moderate use)** | — | **$150–165** |
+
+Compared to V1 three-tier architecture: saves $30-50/month by eliminating variable
+Anthropic API costs. Everything runs on flat-rate Claude subscription + cheap Gemini API.
+
+**Full documentation:** `docs/mobile-access.md`
+
+---
+
 ## SYSTEM DATA FLOW (Complete)
 
 ```
+Mobile / Telegram / Discord / Browser
+    │
+    ▼
+[OPENCLAW GATEWAY] (always-on ingress)
+    │
+    ▼
+[GEMINI ORCHESTRATOR] (classify, decompose, select mode)
+    │
+    ▼
 Senior Human Prompt (high-level intent)
     │
     ▼
@@ -577,11 +728,17 @@ Senior Human Prompt (high-level intent)
 [PHASE 3] N8N FAN-OUT
     │  Parallel sub-workflows spawned for each independent task
     │
-    ├──[PHASE 4] ROUTING → Tier 1/2/3 model selected per task
+    ├──[PHASE 4] ROUTING → Tier 1/2/3 model + mode (EXECUTE/ARCHITECT/SUPERVISE)
     │
     ├──[PHASE 5] MCP EXECUTION (TypeScript wrapper)
     │       │  Agent writes code → code calls MCP tools → distilled results return
     │       │  Output: Completed work + structured report file
+    │
+    ├──[PHASE 7] COMPLETION LOOP (inner, per-task)
+    │       │  Gemini formats prompt → Claude executes → Flash-Lite verifies
+    │       │  RETRY? → Anti-loop check → adjust prompt → retry (up to TTL)
+    │       │  3 failures? → ARCHITECT mode → blueprint → re-EXECUTE
+    │       │  Brain damage prevention: offload context to Gemini MCP cache
     │
     └── [All branches] ──▶ N8N FAN-IN GATE
                               │  Waits for all parallel tasks
@@ -617,18 +774,32 @@ Based on Project Titan (legal defense) and software engineering case studies:
 ## QUICK REFERENCE
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    SYSTEM CONSTANTS                     │
-├─────────────────────────────────────────────────────────┤
-│ Hub pattern:    1 Orchestrator + N Workers + 1 Red Team │
-│ Communication:  Files only (prompts/ and reports/)      │
-│ Memory:         Gemini cache (never re-read raw corpus) │
-│ Routing:        Tier 1 (cheap) → Tier 2 → Tier 3 (rare)│
-│ Parallelism:    Fan-Out on independent tasks            │
-│ Sync:           Fan-In before synthesis/Red Team        │
-│ Safety:         HITL on all irreversible actions        │
-│ Audit:          Every action logged + git-committed     │
-│ MCP:            TypeScript wrappers, not raw JSON-RPC   │
-│ Security:       Sandboxed Docker, RBAC, injection guard │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                    SYSTEM CONSTANTS                          │
+├──────────────────────────────────────────────────────────────┤
+│ Hub pattern:    1 Orchestrator + N Workers + 1 Red Team      │
+│ Communication:  Files only (prompts/ and reports/)           │
+│ Memory:         Gemini cache (never re-read raw corpus)      │
+│ Routing:        Tier 1 (cheap) → Tier 2 → Tier 3 (rare)     │
+│ Parallelism:    Fan-Out on independent tasks                 │
+│ Sync:           Fan-In before synthesis/Red Team             │
+│ Safety:         HITL on all irreversible actions             │
+│ Audit:          Every action logged + git-committed          │
+│ MCP:            TypeScript wrappers, not raw JSON-RPC        │
+│ Security:       Sandboxed Docker, RBAC, injection guard      │
+├──────────────────────────────────────────────────────────────┤
+│                 V3 INTEGRATION CONSTANTS                     │
+├──────────────────────────────────────────────────────────────┤
+│ Gateway:        OpenClaw (Telegram/Discord/mobile ingress)   │
+│ Orchestrator:   Gemini 3.1 Pro (traffic cop, NOT the brain)  │
+│ Prompt modes:   EXECUTE / ARCHITECT / SUPERVISE              │
+│ Inner loop:     Gemini completion loop (per-task retries)    │
+│ Verification:   Flash-Lite post-execution (per-hop)          │
+│ Anti-loop:      TTL 10 hops, hysteresis 3-fail/2-success     │
+│ Backflow:       SHA-256 file state hashing, A-B-A detection  │
+│ Dead-letter:    ~/.openclaw/dead-letter/ + push notification │
+│ Context mgmt:   Brain damage prevention via MCP cache        │
+│ Computer Use:   SUPERVISE mode for GUI-only tasks            │
+│ Cost:           $150-165/mo (Claude flat + Gemini variable)  │
+└──────────────────────────────────────────────────────────────┘
 ```

@@ -19,6 +19,15 @@ caches:
     source_pattern: "schemas/*.json, reports/*.md, security/*.md"
     rebuild_command: "scripts/rebuild-cache.sh pipeline-deliverables"
 
+  - name: brain-context
+    display_name: "Brain Damage Prevention Context Store"
+    description: "Dynamic MCP cache for offloading Claude Code session context. Stores compressed summaries of long-running sessions via store_context tool. Prevents context overflow ('brain damage') in sessions exceeding ~50K tokens."
+    ttl_minutes: 1440
+    criticality: important
+    source_pattern: "dynamic (populated via MCP store_context calls)"
+    rebuild_command: "N/A — dynamic cache, rebuilt on demand by agents"
+    notes: "Unlike pipeline-kb and pipeline-deliverables, this cache is written to by agents during execution, not rebuilt from static files. Cache key format: {task_id}-{session_id}-{block_name}"
+
 # TTL notes:
 # - Gemini caches have a maximum TTL of 1440 minutes (24 hours).
 # - The cache monitor runs every 90 minutes. Setting TTL to 120 minutes ensures

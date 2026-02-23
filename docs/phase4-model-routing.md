@@ -333,6 +333,69 @@ routing rules. This is how the routing logic improves over time.
 
 ---
 
+## Flash-Lite Verification Layer (V3 Integration)
+
+In addition to the pre-dispatch routing classifier, the pipeline uses Gemini Flash-Lite
+as a **post-execution verifier**. This is the inner verification step of the completion
+loop (see [docs/completion-loop.md](completion-loop.md)).
+
+### How It Works
+
+After Claude Code executes a task, the output is passed to Flash-Lite for lightweight
+verification before the result is accepted:
+
+```
+Claude Code returns result
+    ↓
+Flash-Lite receives: { task_objective, output_summary, files_changed }
+    ↓
+Flash-Lite checks:
+  1. Did the output address the stated objective?
+  2. Are there obvious errors, missing files, or incomplete work?
+  3. Does the output match the expected format (JSON schema, report structure)?
+    ↓
+Flash-Lite returns: PASS / RETRY / ESCALATE
+```
+
+### Flash-Lite vs Red Team Review
+
+| | Flash-Lite Verifier | Red Team (Node 5) |
+|---|---|---|
+| **Scope** | Per-task, real-time | Per-batch, post-hoc |
+| **Depth** | Surface-level pass/fail | Deep adversarial critique |
+| **Cost** | ~$0.001/check | Tier 3 model cost |
+| **Speed** | ~1 second | Minutes |
+| **Purpose** | Catch obvious failures fast | Catch subtle issues, conflicts, hallucinations |
+
+They are complementary: Flash-Lite catches the easy failures before they waste Red Team's time.
+Red Team catches the hard failures that Flash-Lite cannot detect.
+
+### Mode-Based Routing (V3 Extension)
+
+In addition to **tier-based routing** (Tier 1/2/3 model selection), V3 adds **mode-based
+routing** — selecting the Claude Code prompt mode based on task type and failure state:
+
+| Mode | When Selected | Tools Available |
+|------|--------------|----------------|
+| EXECUTE | First attempt, or post-architect re-execution | Full: Bash, Read, Write, Edit, MCP |
+| ARCHITECT | After 3 consecutive EXECUTE failures (hysteresis) | Read only |
+| SUPERVISE | Task requires GUI interaction (Computer Use) | Computer Use + Bash + Read + Write + MCP |
+
+Mode routing is **orthogonal to tier routing**: a task can be Tier 2 in EXECUTE mode,
+then Tier 3 in ARCHITECT mode (because deep reasoning needs a more capable model).
+
+### Integration with Existing Escalation
+
+Flash-Lite RETRY increments the task envelope's `consecutive_failures` counter.
+When it reaches the hysteresis threshold (3), the task escalates to ARCHITECT mode.
+This extends the existing Tier 1 → Tier 2 → Tier 3 escalation chain with mode-based
+escalation (EXECUTE → ARCHITECT → SUPERVISE).
+
+See `schemas/task-envelope.schema.json` for the envelope fields and
+`docs/anti-loop-safeguards.md` for the full safeguard documentation.
+
+---
+
 ## Cost Projections and ROI
 
 ### Without Routing (All Opus)

@@ -74,6 +74,61 @@
         "forbidden": { "type": "array", "items": { "type": "string" } },
         "requires_human_approval": { "type": "boolean", "default": false }
       }
+    },
+    "envelope": {
+      "type": "object",
+      "description": "Anti-loop task envelope for completion loop tracking (V3 integration)",
+      "properties": {
+        "ttl_max": {
+          "type": "integer",
+          "default": 10,
+          "minimum": 1,
+          "description": "Maximum hops before task is sent to dead-letter queue"
+        },
+        "hops": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "description": "Current hop count — incremented on each retry"
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["EXECUTE", "ARCHITECT", "SUPERVISE"],
+          "default": "EXECUTE",
+          "description": "Current prompt mode for Claude Code"
+        },
+        "state_hashes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "SHA-256 hashes of file state before/after each hop for backflow detection"
+        },
+        "consecutive_failures": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "description": "Consecutive failure count — triggers ARCHITECT mode at 3"
+        },
+        "consecutive_successes": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "description": "Consecutive success count — de-escalates from ARCHITECT at 2"
+        },
+        "escalated": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether task has been escalated to ARCHITECT mode"
+        },
+        "session_ids": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "All Claude Code session IDs used for this task"
+        },
+        "mcp_cache_key": {
+          "type": "string",
+          "description": "Key for brain-damage-prevention MCP cache context"
+        }
+      }
     }
   }
 }

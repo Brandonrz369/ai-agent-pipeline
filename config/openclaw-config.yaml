@@ -1,0 +1,102 @@
+# OpenClaw Gateway Configuration
+# Controls ingress routing, Gemini orchestrator, and anti-loop defaults
+# Reference: docs/openclaw-gateway.md
+
+# ── Ingress Channels ──────────────────────────────────────────────
+ingress:
+  telegram:
+    enabled: true
+    bot_token: "${TELEGRAM_BOT_TOKEN}"
+    allowed_chat_ids: []          # Empty = allow all; populate for restriction
+    notification_channel: true    # Send dead-letter and HITL notifications here
+
+  discord:
+    enabled: true
+    bot_token: "${DISCORD_BOT_TOKEN}"
+    guild_id: "${DISCORD_GUILD_ID}"
+    channels:
+      dispatch: "#agent-dispatch"     # Inbound task requests
+      approvals: "#approvals"         # HITL gate notifications
+      status: "#agent-status"         # Task completion/failure updates
+      dead_letter: "#dead-letter"     # Expired task notifications
+
+  happy_coder:
+    enabled: false
+    webhook_url: "${HAPPY_CODER_WEBHOOK}"
+    push_notifications: true
+
+  claude_code_remote:
+    enabled: false
+    cloudflare_tunnel: true
+    # QR code pairing — zero-config via `claude --remote`
+
+# ── Gemini Orchestrator ───────────────────────────────────────────
+orchestrator:
+  model: "gemini-3.1-pro-preview"
+  api_key: "${GEMINI_API_KEY}"
+  role: "traffic_cop"               # Gemini routes, classifies, drives loop — does NOT think
+  responsibilities:
+    - classify_task_type             # code / gui / simple_tool
+    - select_prompt_mode             # EXECUTE / ARCHITECT / SUPERVISE
+    - format_claude_prompt           # Build prompt from templates/
+    - parse_json_results             # Read Claude Code output
+    - check_pass_fail                # Evaluate success criteria
+    - drive_retry_loop               # Increment hops, check anti-loop
+    - summarize_for_mobile           # Compress results for phone display
+
+# ── Flash-Lite Verifier ───────────────────────────────────────────
+verifier:
+  model: "gemini-2.5-flash-lite"
+  api_key: "${GEMINI_API_KEY}"
+  role: "post_execution_validator"
+  checks:
+    - "Did output address the objective?"
+    - "Are there obvious errors or missing files?"
+    - "Is the output well-formed JSON/markdown?"
+  responses: ["PASS", "RETRY", "ESCALATE"]
+
+# ── Claude Code Invocation ────────────────────────────────────────
+claude_code:
+  invocation: "claude -p"
+  output_format: "json"
+  modes:
+    execute:
+      template: "templates/execute-prompt.md"
+      allowed_tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "gemini-cache"]
+    architect:
+      template: "templates/architect-prompt.md"
+      allowed_tools: ["Read"]
+    supervise:
+      template: "templates/supervise-prompt.md"
+      allowed_tools: ["computer_use", "Bash", "Read", "Write", "gemini-cache"]
+
+# ── Anti-Loop Defaults ────────────────────────────────────────────
+anti_loop:
+  ttl_max: 10                       # Maximum hops before dead-letter
+  hysteresis:
+    failures_to_escalate: 3         # Consecutive failures → ARCHITECT mode
+    successes_to_deescalate: 2      # Consecutive successes → back to EXECUTE
+  backflow_detection: true          # Hash files before/after each hop
+  hash_algorithm: "sha256"
+
+# ── Dead-Letter Queue ─────────────────────────────────────────────
+dead_letter:
+  path: "~/.openclaw/dead-letter/"
+  notification:
+    telegram: true
+    discord: true
+    channel: "#dead-letter"
+  retention_days: 30                # Auto-cleanup after 30 days
+
+# ── N8n Integration ───────────────────────────────────────────────
+n8n:
+  webhook_url: "${N8N_WEBHOOK_URL}"
+  trigger_batch_dispatch: true      # OpenClaw can trigger N8n fan-out via webhook
+  receive_fan_in_results: true      # N8n sends completed batch results back to OpenClaw
+
+# ── Tailscale (Secure Networking) ─────────────────────────────────
+tailscale:
+  enabled: true
+  # No port forwarding needed — Tailscale mesh VPN handles routing
+  # Install: curl -fsSL https://tailscale.com/install.sh | sh
+  # Auth: tailscale up --authkey=${TAILSCALE_AUTH_KEY}

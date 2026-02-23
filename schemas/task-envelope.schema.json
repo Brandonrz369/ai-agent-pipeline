@@ -1,0 +1,86 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "task-envelope.schema.json",
+  "title": "Task Envelope — Anti-Loop Safeguard",
+  "description": "Standalone envelope for completion loop tracking. Wraps a task_id reference with TTL, hysteresis, and backflow detection metadata. Used by the Gemini orchestrator to drive the inner completion loop.",
+  "type": "object",
+  "required": ["id", "ttl_max", "hops", "mode"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique envelope ID or reference to task_id from task-blueprint"
+    },
+    "task_id_ref": {
+      "type": "string",
+      "pattern": "^[A-Z]+-[0-9]{4}-[0-9]{3}-B[0-9]+-N[0-9]+$",
+      "description": "Optional reference to a full task blueprint task_id"
+    },
+    "ttl_max": {
+      "type": "integer",
+      "default": 10,
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Maximum hops before dead-letter. Default 10."
+    },
+    "hops": {
+      "type": "integer",
+      "default": 0,
+      "minimum": 0,
+      "description": "Current hop count — incremented on each retry"
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["EXECUTE", "ARCHITECT", "SUPERVISE"],
+      "default": "EXECUTE",
+      "description": "Current Claude Code prompt mode"
+    },
+    "state_hashes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "SHA-256 hashes of file state at each hop boundary. If new hash matches any previous hash, backflow is detected and task is blocked."
+    },
+    "consecutive_failures": {
+      "type": "integer",
+      "default": 0,
+      "minimum": 0,
+      "description": "Incremented on FAIL/RETRY. At 3: escalate to ARCHITECT. Reset to 0 on success."
+    },
+    "consecutive_successes": {
+      "type": "integer",
+      "default": 0,
+      "minimum": 0,
+      "description": "Incremented on PASS. At 2: de-escalate from ARCHITECT to EXECUTE. Reset to 0 on failure."
+    },
+    "escalated": {
+      "type": "boolean",
+      "default": false,
+      "description": "Sticky flag: true when task has entered ARCHITECT mode via hysteresis"
+    },
+    "session_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "All Claude Code session IDs used across hops"
+    },
+    "mcp_cache_key": {
+      "type": "string",
+      "description": "Key for brain-damage-prevention context in Gemini MCP cache"
+    },
+    "dead_letter_path": {
+      "type": "string",
+      "default": "~/.openclaw/dead-letter/",
+      "description": "Directory for expired task envelopes"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of envelope creation"
+    },
+    "last_hop_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of most recent hop"
+    }
+  }
+}
