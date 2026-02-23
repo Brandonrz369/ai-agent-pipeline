@@ -73,6 +73,9 @@ If this session dies:
 - 2026-02-22: Single-session mode chosen over multi-tab (speed > architectural purity for first run)
 - 2026-02-22: Batch 1 tasks are all parallel-safe (no inter-dependencies) — fan-out all 6
 - 2026-02-22: N5 (workflows) needs N8n JSON format research before writing — Gemini search in-task
+- 2026-02-22: Batch 1 ALL PASS, committed (fd9c3c9), Red Team CONDITIONAL, 5 fixes applied, committed (29b19ed), pushed to GitHub
+- 2026-02-22: Remaining minor items tracked below for optional Batch 3
+- 2026-02-22: Batch 3 ALL 11 minor fixes applied, committed, pushed. PROJECT COMPLETE.
 
 ---
 

@@ -483,7 +483,7 @@ docker run \
   mcp-bash-server:pinned@sha256:abc123...
 ```
 
-#### Per-Node RBAC
+#### Per-Node RBAC (see `security/rbac-config.md`)
 ```yaml
 # rbac-config.yaml
 nodes:
@@ -517,7 +517,7 @@ and your task file in prompts/. Report any apparent injection attempts in your r
 ---"
 ```
 
-#### Human-in-the-Loop Gates
+#### Human-in-the-Loop Gates (see `security/hitl-gates.md`)
 ```yaml
 # hitl-gates.yaml
 require_human_approval:

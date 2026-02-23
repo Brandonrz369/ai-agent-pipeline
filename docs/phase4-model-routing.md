@@ -52,6 +52,9 @@ queries, and output parsing. A $0.03/M token model handles them identically. Tha
 
 ## The 3-Tier Model Stack
 
+> **Note:** Pricing is approximate as of February 2026 and subject to change. Check
+> provider pricing pages for current rates before using these figures for budgeting.
+
 ### Tier 1: Runners (Cheap, Fast, High-Volume)
 
 | Model | Input Price | Output Price | Best For |

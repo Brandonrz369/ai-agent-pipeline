@@ -1,0 +1,26 @@
+# required-caches.yaml
+# Defines the Gemini caches that must be active for the pipeline to function.
+# The cache monitor workflow (n8n-cache-monitor.json) checks these on a 90-minute schedule.
+
+caches:
+  - name: pipeline-kb
+    display_name: "Pipeline Knowledge Base"
+    description: "Core knowledge base containing all project documentation, research, and reference material."
+    ttl_minutes: 120
+    criticality: critical
+    source_pattern: "docs/*.md, ARCHITECTURE.md, GTG1002_ANALYSIS.md"
+    rebuild_command: "scripts/rebuild-cache.sh pipeline-kb"
+
+  - name: pipeline-deliverables
+    display_name: "Pipeline Deliverables"
+    description: "Cache of all completed deliverables, reports, and schemas for cross-reference by agents."
+    ttl_minutes: 120
+    criticality: critical
+    source_pattern: "schemas/*.json, reports/*.md, security/*.md"
+    rebuild_command: "scripts/rebuild-cache.sh pipeline-deliverables"
+
+# TTL notes:
+# - Gemini caches have a maximum TTL of 1440 minutes (24 hours).
+# - The cache monitor runs every 90 minutes. Setting TTL to 120 minutes ensures
+#   caches are checked at least once before expiry.
+# - If a cache is expiring within 30 minutes at check time, it will be refreshed.

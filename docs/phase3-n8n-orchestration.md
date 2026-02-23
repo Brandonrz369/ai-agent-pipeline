@@ -90,6 +90,12 @@ A new JSON file appears in `prompts/` matching the pattern `batch*_tasks.json`.
     ...
 ```
 
+> **Note:** N8n's `SplitInBatches` node processes items sequentially, not in parallel.
+> For true parallelism, use N8n sub-workflows triggered via HTTP webhook (each task
+> fires a separate webhook call that runs concurrently), or use multiple webhook-triggered
+> workflows. The sequential dispatch is functionally correct but does not achieve the
+> parallel speedup described in ARCHITECTURE.md without this sub-workflow pattern.
+
 Each sub-workflow:
 1. Loads the agent context (system prompt from `templates/worker-prompt.md`)
 2. Injects the specific task JSON
@@ -146,12 +152,12 @@ the next agent's input.
 
 ### Trigger
 
-A new file appears in `reports/` matching `n[2-5]_*.md`.
+A new file appears in `reports/` matching `n[2-5]_*_batch[N].md` (regex: `^n(\d+)_(.+)_batch(\d+)\.md$`).
 
 ### Logic
 
 ```yaml
-trigger: File created in reports/ matching n[2-5]_*.md
+trigger: File created in reports/ matching n[2-5]_*_batch[N].md
 
 steps:
   - read: Parse the report file

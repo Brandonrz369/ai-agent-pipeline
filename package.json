@@ -1,0 +1,15 @@
+{
+  "name": "ai-agent-pipeline",
+  "version": "1.0.0",
+  "description": "Schema validation tooling for the autonomous AI agent pipeline",
+  "private": true,
+  "devDependencies": {
+    "ajv": "^8.17.1",
+    "ajv-cli": "^5.0.0"
+  },
+  "scripts": {
+    "validate:task": "npx ajv validate -s schemas/task-blueprint.schema.json -d prompts/batch*_tasks.json",
+    "validate:report": "npx ajv validate -s schemas/report.schema.json -d reports/*.json",
+    "validate:routing": "npx ajv validate -s schemas/routing-config.schema.json -d config/routing-config.json"
+  }
+}

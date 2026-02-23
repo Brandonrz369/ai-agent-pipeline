@@ -72,7 +72,7 @@ ai-agent-pipeline/
 ├── schemas/
 │   ├── task-blueprint.schema.json    ← JSON Schema for task contracts
 │   ├── report.schema.json            ← JSON Schema for agent reports
-│   └── routing-config.schema.json   ← Model routing configuration
+│   └── routing-config.schema.json   ← Model routing configuration (includes cost limits/budget guardrails)
 ├── workflows/
 │   ├── n8n-fanout-fanin.json        ← N8n workflow export (parallel execution)
 │   ├── n8n-delegation-chain.json    ← N8n automated handoff workflow

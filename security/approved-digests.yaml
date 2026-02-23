@@ -1,0 +1,48 @@
+# approved-digests.yaml
+# Pinned Docker image digests for MCP servers used in the pipeline.
+# All MCP servers requiring system access must be pulled by digest, never by tag.
+# See security/threat-model.md (Supply Chain Drift) and security/rbac-config.md.
+#
+# Format:
+#   server_name: Human-readable name of the MCP server
+#   image: Docker image reference (without tag)
+#   digest: SHA256 digest of the approved image
+#   last_verified: Date the digest was last verified against the upstream source
+#   notes: Any relevant context
+#
+# To verify a digest:
+#   docker inspect --format='{{index .RepoDigests 0}}' <image>
+#
+# To update after review:
+#   1. Pull the new image and inspect its digest
+#   2. Review the changelog for security-relevant changes
+#   3. Update the digest and last_verified date below
+#   4. Commit with a signed commit: git commit -S -m "security: update <server> digest"
+
+approved_digests:
+  # - server_name: "Filesystem MCP Server"
+  #   image: "mcp-filesystem-server"
+  #   digest: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  #   last_verified: "2026-02-22"
+  #   notes: "Read/write access to project workspace"
+
+  # - server_name: "Bash MCP Server"
+  #   image: "mcp-bash-server"
+  #   digest: "sha256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+  #   last_verified: "2026-02-22"
+  #   notes: "Sandboxed command execution - pinned per ARCHITECTURE.md Section 6.2"
+
+  # - server_name: "GitHub MCP Server"
+  #   image: "mcp-github-server"
+  #   digest: "sha256:f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5"
+  #   last_verified: "2026-02-22"
+  #   notes: "PR creation and commit operations"
+
+  # - server_name: "Gemini Cache MCP Server"
+  #   image: "mcp-gemini-cache-server"
+  #   digest: "sha256:1a2b3c4d5e6f1a2b3c4d5e6f1a2b3c4d5e6f1a2b3c4d5e6f1a2b3c4d5e6f1a2b"
+  #   last_verified: "2026-02-22"
+  #   notes: "Knowledge base cache queries"
+
+# NOTE: Populate with real digests when MCP servers are deployed.
+# All digests above are placeholders for illustration only.

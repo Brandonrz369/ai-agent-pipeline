@@ -36,6 +36,12 @@ To do research:
 5. Write completion report to `reports/` (exact filename in task file)
 
 ## REPORT FORMAT
+
+**Filename convention:** Report files MUST follow the pattern `reports/n[NODE]_[taskname]_batch[BATCH].md`
+(e.g., `reports/n2_schemas_batch1.md`). The N8n delegation chain workflow uses the regex
+`^n(\d+)_(.+)_batch(\d+)\.md$` to detect and route completed reports. Files that do not
+match this pattern will not trigger downstream automation.
+
 ```markdown
 # NODE [N] COMPLETION REPORT
 ## Task ID: [from task file]

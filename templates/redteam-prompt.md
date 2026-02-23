@@ -44,7 +44,7 @@ When the Orchestrator triggers you after a batch completes:
 3. **Check for cross-stream conflicts** — Compare outputs across all workers in the batch. If Worker A states X and Worker B states not-X (or an incompatible variant), flag the conflict with both file references.
 4. **Check for unsupported assertions** — Any claim, conclusion, or recommendation that lacks a citation or cache-verifiable basis is flagged. Workers must not invent facts.
 5. **Check for scope violations** — Review the `constraints` from each worker's task blueprint. Verify that files changed match the worker's `write_scope` and that no `forbidden` paths were touched.
-6. **Write Red Team report** — Output your findings to `reports/n5_redteam_batch[BATCH NUMBER].md`
+6. **Write Red Team report** — Output your findings to `reports/redteam_batch[BATCH NUMBER].md`
 
 ## REPORT FORMAT
 ```markdown
