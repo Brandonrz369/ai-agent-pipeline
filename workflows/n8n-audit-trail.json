@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "path": "/root/ai-agent-pipeline/reports/",
+        "path": "/home/brans/ai-agent-pipeline/reports/",
         "events": ["add", "change"],
         "options": {
           "ignored": "**/.gitkeep"
@@ -55,7 +55,7 @@
     },
     {
       "parameters": {
-        "command": "={{ 'cd /root/ai-agent-pipeline && git add ' + ($json.files_changed.length > 0 ? $json.files_changed.join(' ') : '.') + ' ' + $json.report_file + ' 2>&1' }}"
+        "command": "={{ 'cd /home/brans/ai-agent-pipeline && git add ' + ($json.files_changed.length > 0 ? $json.files_changed.join(' ') : '.') + ' ' + $json.report_file + ' 2>&1' }}"
       },
       "id": "d1b2c3d4-e5f6-7890-abcd-400000000004",
       "name": "Git Add Files",
@@ -75,7 +75,7 @@
     },
     {
       "parameters": {
-        "command": "={{ 'cd /root/ai-agent-pipeline && git commit -m \"' + $json.commit_message.replace(/\"/g, '\\\\\"').replace(/\\n/g, '\\n') + '\" 2>&1' }}"
+        "command": "={{ 'cd /home/brans/ai-agent-pipeline && git commit -m \"' + $json.commit_message.replace(/\"/g, '\\\\\"').replace(/\\n/g, '\\n') + '\" 2>&1' }}"
       },
       "id": "d1b2c3d4-e5f6-7890-abcd-400000000006",
       "name": "Git Commit",
@@ -106,8 +106,8 @@
       "position": [1990, 200],
       "credentials": {
         "discordWebhookApi": {
-          "id": "[REPLACE_CREDENTIAL_ID]",
-          "name": "[REPLACE] Pipeline Discord Webhook"
+          "id": "pipeline-discord-webhook",
+          "name": "Pipeline Discord Webhook"
         }
       }
     },
@@ -216,7 +216,7 @@
   },
   "versionId": "audit-trail-v1-2026-02-22",
   "meta": {
-    "instanceId": "[REPLACE_N8N_INSTANCE_ID]",
+    "instanceId": "ai-pipeline-local-001",
     "templateCredsSetupCompleted": false
   },
   "tags": [

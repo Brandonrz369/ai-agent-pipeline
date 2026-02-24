@@ -1,15 +1,38 @@
 {
   "name": "ai-agent-pipeline",
-  "version": "1.0.0",
-  "description": "Schema validation tooling for the autonomous AI agent pipeline",
+  "version": "2.0.0",
+  "description": "Autonomous AI agent pipeline — Gemini orchestrator + Claude Code executor with anti-loop safeguards",
   "private": true,
-  "devDependencies": {
-    "ajv": "^8.17.1",
-    "ajv-cli": "^5.0.0"
+  "type": "module",
+  "bin": {
+    "pipeline": "./dist/cli.js"
   },
   "scripts": {
+    "dev": "tsx src/cli.ts",
+    "build": "tsc",
+    "start": "node dist/cli.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
     "validate:task": "npx ajv validate -s schemas/task-blueprint.schema.json -d prompts/batch*_tasks.json",
     "validate:report": "npx ajv validate -s schemas/report.schema.json -d reports/*.json",
-    "validate:routing": "npx ajv validate -s schemas/routing-config.schema.json -d config/routing-config.json"
+    "validate:routing": "npx ajv validate -s schemas/routing-config.schema.json -d config/routing-config.json",
+    "pipeline": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "commander": "^13.0.0",
+    "dotenv": "^16.4.0",
+    "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "ajv-cli": "^5.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0",
+    "@types/node": "^22.0.0"
   }
 }

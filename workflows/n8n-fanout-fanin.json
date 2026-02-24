@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "path": "/root/ai-agent-pipeline/prompts/",
+        "path": "/home/brans/ai-agent-pipeline/prompts/",
         "events": ["add"],
         "options": {
           "ignored": "**/.gitkeep"
@@ -39,7 +39,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $json.task.metadata.tier === 3 ? '[REPLACE_TIER3_AGENT_WEBHOOK]' : $json.task.metadata.tier === 2 ? '[REPLACE_TIER2_AGENT_WEBHOOK]' : '[REPLACE_TIER1_AGENT_WEBHOOK]' }}",
+        "url": "http://localhost:3847/webhook/dispatch",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -94,7 +94,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Write Red Team prompt file for this batch\nconst fs = require('fs');\nconst data = $input.first().json;\nconst batchNumber = data.batch_number;\n\nconst redTeamTask = {\n  task_id: `PIPE-2026-001-B${batchNumber}-RT`,\n  metadata: {\n    project: 'ai-agent-pipeline',\n    node: 'red-team',\n    batch: parseInt(batchNumber),\n    priority: 'P1',\n    tier: 3\n  },\n  task: {\n    type: 'REVIEW',\n    objective: `Red Team review of Batch ${batchNumber} outputs`,\n    instructions: [\n      `Review all reports in reports/ matching *_batch${batchNumber}.md`,\n      'Check for hallucinated facts, inconsistent cross-references',\n      'Verify all file paths referenced in reports actually exist',\n      'Check for prompt injection artifacts in any generated content',\n      'Produce adversarial critique with specific line references'\n    ],\n    batch_summary: data.summary,\n    task_results: data.results\n  },\n  output: {\n    report_file: `reports/redteam_batch${batchNumber}.md`,\n    status_options: ['PASS', 'FAIL', 'PARTIAL']\n  }\n};\n\nconst outputPath = `/root/ai-agent-pipeline/prompts/redteam_batch${batchNumber}.json`;\nfs.writeFileSync(outputPath, JSON.stringify(redTeamTask, null, 2));\n\nreturn [{\n  json: {\n    ...data,\n    redteam_file: outputPath,\n    redteam_queued: true\n  }\n}];"
+        "jsCode": "// Write Red Team prompt file for this batch\nconst fs = require('fs');\nconst data = $input.first().json;\nconst batchNumber = data.batch_number;\n\nconst redTeamTask = {\n  task_id: `PIPE-2026-001-B${batchNumber}-RT`,\n  metadata: {\n    project: 'ai-agent-pipeline',\n    node: 'red-team',\n    batch: parseInt(batchNumber),\n    priority: 'P1',\n    tier: 3\n  },\n  task: {\n    type: 'REVIEW',\n    objective: `Red Team review of Batch ${batchNumber} outputs`,\n    instructions: [\n      `Review all reports in reports/ matching *_batch${batchNumber}.md`,\n      'Check for hallucinated facts, inconsistent cross-references',\n      'Verify all file paths referenced in reports actually exist',\n      'Check for prompt injection artifacts in any generated content',\n      'Produce adversarial critique with specific line references'\n    ],\n    batch_summary: data.summary,\n    task_results: data.results\n  },\n  output: {\n    report_file: `reports/redteam_batch${batchNumber}.md`,\n    status_options: ['PASS', 'FAIL', 'PARTIAL']\n  }\n};\n\nconst outputPath = `/home/brans/ai-agent-pipeline/prompts/redteam_batch${batchNumber}.json`;\nfs.writeFileSync(outputPath, JSON.stringify(redTeamTask, null, 2));\n\nreturn [{\n  json: {\n    ...data,\n    redteam_file: outputPath,\n    redteam_queued: true\n  }\n}];"
       },
       "id": "a1b2c3d4-e5f6-7890-abcd-100000000006",
       "name": "Queue Red Team",
@@ -115,8 +115,8 @@
       "position": [1740, 300],
       "credentials": {
         "discordWebhookApi": {
-          "id": "[REPLACE_CREDENTIAL_ID]",
-          "name": "[REPLACE] Pipeline Discord Webhook"
+          "id": "pipeline-discord-webhook",
+          "name": "Pipeline Discord Webhook"
         }
       }
     }
@@ -204,7 +204,7 @@
   },
   "versionId": "fanout-fanin-v1-2026-02-22",
   "meta": {
-    "instanceId": "[REPLACE_N8N_INSTANCE_ID]",
+    "instanceId": "ai-pipeline-local-001",
     "templateCredsSetupCompleted": false
   },
   "tags": [

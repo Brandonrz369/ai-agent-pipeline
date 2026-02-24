@@ -27,7 +27,7 @@
           "parameters": [
             {
               "name": "x-goog-api-key",
-              "value": "[REPLACE_GEMINI_API_KEY]"
+              "value": "={{ $env.GEMINI_API_KEY || 'REDACTED_GEMINI_API_KEY' }}"
             }
           ]
         },
@@ -98,14 +98,14 @@
       "position": [1240, 200],
       "credentials": {
         "discordWebhookApi": {
-          "id": "[REPLACE_CREDENTIAL_ID]",
-          "name": "[REPLACE] Pipeline Discord Webhook"
+          "id": "pipeline-discord-webhook",
+          "name": "Pipeline Discord Webhook"
         }
       }
     },
     {
       "parameters": {
-        "command": "#!/bin/bash\n# Rebuild missing Gemini caches\ncd /root/ai-agent-pipeline\n\nMISSING='{{ $json.missing_caches.join(\",\") }}'\nLOG_FILE=\"/var/log/cache-rebuild-$(date +%Y%m%d-%H%M%S).log\"\n\necho \"Cache rebuild started at $(date)\" > \"$LOG_FILE\"\n\nif echo \"$MISSING\" | grep -q 'project-kb'; then\n  echo \"Rebuilding project-kb cache...\" >> \"$LOG_FILE\"\n  # Concatenate key knowledge base files\n  cat ARCHITECTURE.md STRATEGY.md GTG1002_ANALYSIS.md > /tmp/project-kb-content.md 2>> \"$LOG_FILE\"\n  # Use Gemini API to create cache (replace with actual cache creation script)\n  if [ -f scripts/rebuild-cache.sh ]; then\n    bash scripts/rebuild-cache.sh project-kb /tmp/project-kb-content.md >> \"$LOG_FILE\" 2>&1\n  else\n    echo \"WARN: scripts/rebuild-cache.sh not found — manual rebuild required\" >> \"$LOG_FILE\"\n  fi\nfi\n\nif echo \"$MISSING\" | grep -q 'project-deliverables'; then\n  echo \"Rebuilding project-deliverables cache...\" >> \"$LOG_FILE\"\n  # Concatenate all reports and deliverables\n  find reports/ -name '*.md' -exec cat {} + > /tmp/project-deliverables-content.md 2>> \"$LOG_FILE\"\n  if [ -f scripts/rebuild-cache.sh ]; then\n    bash scripts/rebuild-cache.sh project-deliverables /tmp/project-deliverables-content.md >> \"$LOG_FILE\" 2>&1\n  else\n    echo \"WARN: scripts/rebuild-cache.sh not found — manual rebuild required\" >> \"$LOG_FILE\"\n  fi\nfi\n\n# Also refresh any soon-to-expire caches\nSOON_EXPIRING='{{ $json.soon_expiring.map(c => c.name).join(\",\") }}'\nif [ -n \"$SOON_EXPIRING\" ] && [ \"$SOON_EXPIRING\" != \"\" ]; then\n  echo \"Refreshing soon-expiring caches: $SOON_EXPIRING\" >> \"$LOG_FILE\"\n  if [ -f scripts/refresh-cache.sh ]; then\n    bash scripts/refresh-cache.sh \"$SOON_EXPIRING\" >> \"$LOG_FILE\" 2>&1\n  fi\nfi\n\necho \"Cache rebuild completed at $(date)\" >> \"$LOG_FILE\"\ncat \"$LOG_FILE\""
+        "command": "#!/bin/bash\n# Rebuild missing Gemini caches\ncd /home/brans/ai-agent-pipeline\n\nMISSING='{{ $json.missing_caches.join(\",\") }}'\nLOG_FILE=\"/var/log/cache-rebuild-$(date +%Y%m%d-%H%M%S).log\"\n\necho \"Cache rebuild started at $(date)\" > \"$LOG_FILE\"\n\nif echo \"$MISSING\" | grep -q 'project-kb'; then\n  echo \"Rebuilding project-kb cache...\" >> \"$LOG_FILE\"\n  # Concatenate key knowledge base files\n  cat ARCHITECTURE.md STRATEGY.md GTG1002_ANALYSIS.md > /tmp/project-kb-content.md 2>> \"$LOG_FILE\"\n  # Use Gemini API to create cache (replace with actual cache creation script)\n  if [ -f scripts/rebuild-cache.sh ]; then\n    bash scripts/rebuild-cache.sh project-kb /tmp/project-kb-content.md >> \"$LOG_FILE\" 2>&1\n  else\n    echo \"WARN: scripts/rebuild-cache.sh not found — manual rebuild required\" >> \"$LOG_FILE\"\n  fi\nfi\n\nif echo \"$MISSING\" | grep -q 'project-deliverables'; then\n  echo \"Rebuilding project-deliverables cache...\" >> \"$LOG_FILE\"\n  # Concatenate all reports and deliverables\n  find reports/ -name '*.md' -exec cat {} + > /tmp/project-deliverables-content.md 2>> \"$LOG_FILE\"\n  if [ -f scripts/rebuild-cache.sh ]; then\n    bash scripts/rebuild-cache.sh project-deliverables /tmp/project-deliverables-content.md >> \"$LOG_FILE\" 2>&1\n  else\n    echo \"WARN: scripts/rebuild-cache.sh not found — manual rebuild required\" >> \"$LOG_FILE\"\n  fi\nfi\n\n# Also refresh any soon-to-expire caches\nSOON_EXPIRING='{{ $json.soon_expiring.map(c => c.name).join(\",\") }}'\nif [ -n \"$SOON_EXPIRING\" ] && [ \"$SOON_EXPIRING\" != \"\" ]; then\n  echo \"Refreshing soon-expiring caches: $SOON_EXPIRING\" >> \"$LOG_FILE\"\n  if [ -f scripts/refresh-cache.sh ]; then\n    bash scripts/refresh-cache.sh \"$SOON_EXPIRING\" >> \"$LOG_FILE\" 2>&1\n  fi\nfi\n\necho \"Cache rebuild completed at $(date)\" >> \"$LOG_FILE\"\ncat \"$LOG_FILE\""
       },
       "id": "c1b2c3d4-e5f6-7890-abcd-300000000006",
       "name": "Rebuild Missing Caches",
@@ -190,7 +190,7 @@
   },
   "versionId": "cache-monitor-v1-2026-02-22",
   "meta": {
-    "instanceId": "[REPLACE_N8N_INSTANCE_ID]",
+    "instanceId": "ai-pipeline-local-001",
     "templateCredsSetupCompleted": false
   },
   "tags": [

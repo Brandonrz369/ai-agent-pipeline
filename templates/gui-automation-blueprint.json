@@ -1,0 +1,56 @@
+{
+  "task_id": "LAA-2026-{seq}-B{batch}-N{node}",
+  "metadata": {
+    "project": "legacy-automation-agency",
+    "node": "{node}",
+    "workstream": "gui-automation",
+    "batch": "{batch}",
+    "priority": "P2",
+    "tier": 3
+  },
+  "task": {
+    "type": "EXECUTE",
+    "objective": "{objective}",
+    "instructions": [
+      "Take a screenshot to verify {target_application} is open and ready",
+      "Parse the input data from {input_file}",
+      "For each record in the input data:",
+      "  - Navigate to the correct form/screen in {target_application}",
+      "  - Enter each field using keyboard input",
+      "  - Verify the entry was accepted (screenshot + visual check)",
+      "  - Log the entry status (success/error/skipped)",
+      "Every 5 entries: offload context via store_context MCP to prevent brain damage",
+      "On completion: take a final screenshot showing summary/count",
+      "Report total records processed, failed, and screenshots taken"
+    ],
+    "dependencies": [],
+    "mcp_tools_required": ["computer_use", "filesystem", "bash", "gemini-cache"],
+    "context_queries": [
+      "What is the layout of {target_application}'s main data entry form?",
+      "What fields are required vs optional?",
+      "What does a successful entry confirmation look like?"
+    ],
+    "gui_config": {
+      "target_application": "{target_application}",
+      "input_file": "{input_file}",
+      "record_count": "{record_count}",
+      "url_allowlist": [],
+      "visual_success_criteria": "{visual_success_criteria}"
+    }
+  },
+  "output": {
+    "report_file": "reports/{task_id}_report.json",
+    "status_options": ["PASS", "FAIL", "PARTIAL", "BLOCKED"],
+    "required_fields": ["status", "records_processed", "records_failed", "screenshots_taken"]
+  },
+  "constraints": {
+    "write_scope": ["results/", "screenshots/", "reports/"],
+    "read_scope": ["uploads/", "results/", "config/"],
+    "forbidden": ["src/", "node_modules/", ".env", ".git/"],
+    "requires_human_approval": true
+  },
+  "envelope": {
+    "ttl_max": 5,
+    "mode": "SUPERVISE"
+  }
+}

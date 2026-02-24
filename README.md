@@ -1,222 +1,268 @@
 # Autonomous AI Agent Pipeline
-## Strategic Orchestration of Multi-Agent Systems for Complex Execution Workflows
-## Version 1.0 — February 2026
+## Two-Tier Agent Architecture — Gemini Orchestrator + Claude Code Brain/Executor/Supervisor
+## Version 2.0 — February 2026
 
 ---
 
 > **Derived from**: GTG-1002 attack pattern research (Anthropic, Nov 2025) + Project Titan
 > legal defense multi-agent execution + 2026 enterprise AI engineering best practices.
-> This is the generalized, reusable version of those architectures.
 
 ---
 
 ## What This Is
 
-A complete blueprint and implementation framework for orchestrating multiple AI agents
-to execute complex, multi-front workflows that exceed the capability of any single agent.
+A production-grade orchestration framework for autonomous multi-agent AI workflows.
+Gemini 3.1 Pro routes your requests and drives the retry loop. Claude Code does ALL the
+thinking, coding, and GUI supervision. Anti-loop safeguards guarantee bounded cost.
 
-**The core problem this solves:**
-Any task complex enough to require deep research, parallel workstreams, quality control,
-and iterative refinement will break a single AI agent — through context limits, hallucination
-cascade, or the inability to hold conflicting sub-strategies simultaneously.
+**The core problem:**
+Any task complex enough to require deep research, parallel workstreams, and iterative
+refinement will break a single agent through context limits, hallucination cascade, or
+strategy conflicts.
 
 **The solution:**
-A Hub-and-Spoke Blackboard architecture where specialized agents each hold narrow context,
-communicate through structured files, query a shared memory layer (Gemini/LLM cache), and
-are coordinated by an Orchestrator that reads summaries — never raw data.
-
----
-
-## Architecture Overview
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     PIPELINE OVERVIEW                           │
-│                                                                 │
-│  PHASE 1: DEEP RESEARCH                                         │
-│  Senior prompt → Deep Research API → Comprehensive spec         │
-│                                                                 │
-│  PHASE 2: SCHEMA DECOMPOSITION                                  │
-│  Spec → JSON task blueprint → Machine-executable contracts      │
-│                                                                 │
-│  PHASE 3: N8N ORCHESTRATION                                     │
-│  Fan-Out → Parallel agent swarm → Fan-In gate                  │
-│                                                                 │
-│  PHASE 4: INTENT-BASED MODEL ROUTING (Portkey/Gateway)         │
-│  Task type → Tier 1/2/3 model selection → Cost optimization    │
-│                                                                 │
-│  PHASE 5: MCP EXECUTION                                         │
-│  TypeScript wrappers → Tool calls → Structured results         │
-│                                                                 │
-│  PHASE 6: SECURITY & GOVERNANCE                                 │
-│  Sandboxing → RBAC → HITL gates → Audit trail                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Repo Structure
-
-```
-ai-agent-pipeline/
-├── README.md                    ← This file (start here)
-├── ARCHITECTURE.md              ← Full technical blueprint (Phases 1-7)
-├── GTG1002_ANALYSIS.md          ← Verified attack pattern research + lessons
-├── STRATEGY.md                  ← Crash recovery & execution log
-├── docs/
-│   ├── phase1-deep-research.md
-│   ├── phase2-schema-decomposition.md
-│   ├── phase3-n8n-orchestration.md
-│   ├── phase4-model-routing.md
-│   ├── phase5-mcp-execution.md
-│   ├── phase6-security.md
-│   ├── openclaw-gateway.md      ← V3: OpenClaw gateway & mobile ingress
-│   ├── prompt-modes.md          ← V3: EXECUTE/ARCHITECT/SUPERVISE modes
-│   ├── completion-loop.md       ← V3: Inner task execution loop
-│   ├── computer-use.md          ← V3: Computer Use / SUPERVISE mode
-│   ├── anti-loop-safeguards.md  ← V3: TTL, hysteresis, dead-letter queue
-│   └── mobile-access.md         ← V3: Mobile & remote access + cost model
-├── schemas/
-│   ├── task-blueprint.schema.json    ← JSON Schema for task contracts (+ envelope extension)
-│   ├── task-envelope.schema.json     ← V3: Anti-loop task envelope schema
-│   ├── report.schema.json            ← JSON Schema for agent reports
-│   └── routing-config.schema.json    ← Model routing configuration
-├── workflows/
-│   ├── n8n-fanout-fanin.json        ← N8n workflow export (parallel execution)
-│   ├── n8n-delegation-chain.json    ← N8n automated handoff workflow
-│   ├── n8n-cache-monitor.json       ← N8n cache expiry alerting
-│   └── n8n-audit-trail.json         ← N8n git commit automation
-├── templates/
-│   ├── orchestrator-prompt.md       ← System prompt template for Hub agent
-│   ├── worker-prompt.md             ← System prompt template for worker nodes
-│   ├── redteam-prompt.md            ← System prompt for Red Team / critic agent
-│   ├── task-file.md                 ← Task dispatch file template (+ envelope section)
-│   ├── execute-prompt.md            ← V3: EXECUTE mode prompt (full tools)
-│   ├── architect-prompt.md          ← V3: ARCHITECT mode prompt (read-only reasoning)
-│   └── supervise-prompt.md          ← V3: SUPERVISE mode prompt (Computer Use)
-├── config/
-│   ├── required-caches.yaml         ← Gemini cache definitions (+ brain-context)
-│   ├── openclaw-config.yaml         ← V3: OpenClaw gateway configuration
-│   └── mcp-servers.yaml             ← V3: MCP server registry (+ gemini-cache)
-├── scripts/
-│   ├── rebuild-cache.sh             ← Cache rebuild script (+ brain-context)
-│   └── refresh-cache.sh             ← Cache refresh script
-└── security/
-    ├── threat-model.md              ← Threats (+ retry storms, Computer Use risks)
-    ├── rbac-config.md               ← Per-node permissions (+ Supervisor node)
-    ├── hitl-gates.md                ← HITL gates (+ HITL-013, HITL-014 for Computer Use)
-    └── approved-digests.yaml        ← MCP server image pinning
-```
+A two-tier system where Gemini is the traffic cop and Claude Code is the workforce —
+brain, executor, and supervisor — with industrial-grade anti-loop safeguards, brain
+damage prevention via MCP context caching, and mobile/remote access via OpenClaw.
 
 ---
 
 ## Quick Start
 
-### 1. Prerequisites
+### Prerequisites
 
-**Core (required):**
-- Claude Code (claude-sonnet-4-6 or higher) — the brain/executor/supervisor
-- Gemini MCP server (`@rlabs-inc/gemini-mcp`) — memory/cache layer
-- N8n (local or VPS) — see docs/phase3-n8n-orchestration.md
-- Git + GitHub CLI
+- **Node.js** >= 22
+- **Claude Code** CLI (`claude` in PATH) — the brain/executor
+- **Gemini API Key** — for orchestration, verification, and caching
 
-**V3 Integration (recommended):**
-- OpenClaw Gateway — always-on ingress for mobile/remote access
-- Gemini 3.1 Pro API key — orchestrator model
-- Tailscale — secure VPN for remote access (free tier)
-- Happy Coder app (iOS/Android) — native mobile interface (optional)
-- Telegram or Discord bot — for task dispatch and notifications (optional)
+### Install
 
-### 2. Start a session
 ```bash
-# Open tmux with named panes
-tmux new-session -s pipeline -n hub
-tmux new-window -t pipeline -n worker1
-tmux new-window -t pipeline -n worker2
-tmux new-window -t pipeline -n worker3
-tmux new-window -t pipeline -n redteam
-
-# In hub pane:
-claude  # This becomes Node 0 (Orchestrator)
-
-# In each worker pane:
-claude  # Worker nodes — paste system prompt from templates/worker-prompt.md
+cd ai-agent-pipeline
+npm install
+cp .env.example .env
+# Edit .env and set GEMINI_API_KEY
 ```
 
-### 3. Initialize memory layer
-```bash
-# Combine your project's knowledge base into cache files
-cat your-project-docs/*.md > /tmp/knowledge_base.txt
+### Run Tests
 
-# Create Gemini cache via MCP
-# gemini-create-cache filePath:/tmp/knowledge_base.txt displayName:project-kb ttlMinutes:120
+```bash
+npm test                    # Run all 93 tests
+npm run build               # Compile TypeScript → dist/
+npm run dev -- status       # Run CLI in dev mode
 ```
 
-### 4. Dispatch first batch
-Node 0 generates JSON task contracts from schemas/task-blueprint.schema.json
-and writes them to prompts/. Workers read and execute.
+### CLI Commands
 
-### Alternative: OpenClaw-Based Dispatch (V3)
-If you have OpenClaw installed, you can skip tmux and dispatch from your phone:
 ```bash
-# OpenClaw receives your message via Telegram/Discord/Happy Coder
-# Gemini orchestrator decomposes the task
-# Claude Code sessions are spawned automatically in the right prompt mode
-# Results are sent back to your phone
+# Full pipeline — research → decompose → dispatch
+npx tsx src/cli.ts run "Build a Discord bot in Python"
 
-# See docs/openclaw-gateway.md for full setup
-# See config/openclaw-config.yaml for configuration
+# Individual phases
+npx tsx src/cli.ts research "authentication patterns for Node.js"
+npx tsx src/cli.ts decompose research-output.md
+npx tsx src/cli.ts dispatch prompts/batch1_tasks.json
+npx tsx src/cli.ts dispatch prompts/batch1_tasks.json --dry-run
+
+# Validation
+npx tsx src/cli.ts validate prompts/batch1_tasks.json
+
+# Dead-letter queue management
+npx tsx src/cli.ts dead-letter list
+npx tsx src/cli.ts dead-letter inspect <id>
+npx tsx src/cli.ts dead-letter retry <id>
+
+# Audit trail
+npx tsx src/cli.ts audit list
+npx tsx src/cli.ts audit verify
+
+# Status
+npx tsx src/cli.ts status
+
+# Webhook server (for N8n callbacks and HITL approvals)
+npx tsx src/cli.ts serve --port 3847
+```
+
+### OpenClaw Integration
+
+If you have OpenClaw installed, dispatch from your phone:
+
+```bash
+# Install pipeline as an OpenClaw skill
+npx tsx src/cli.ts serve    # Start the gateway
+
+# Then from Telegram/Discord/Happy Coder:
+# "Run pipeline: Build a Discord bot in Python"
+# OpenClaw routes to Gemini → Claude Code → results back to your phone
 ```
 
 ---
 
-## The GTG-1002 Pattern (The Foundation)
+## Architecture
 
-This architecture is directly derived from the November 2025 Anthropic disclosure of
-**GTG-1002**, a Chinese state-sponsored group that used Claude Code + MCP to conduct
-autonomous cyber operations against ~30 enterprise targets with 80-90% AI autonomy.
+```
+YOU (Phone / Discord / CLI)
+  │
+  ▼
+OPENCLAW GATEWAY (always running)
+  │
+  ▼
+GEMINI 3.1 PRO (traffic cop — routes, doesn't think)
+  │
+  ├── Classifies task type (code / GUI / research / simple)
+  ├── Selects prompt mode (EXECUTE / ARCHITECT / SUPERVISE)
+  ├── Formats prompt from templates
+  │
+  ▼
+CLAUDE CODE (brain + executor + supervisor)
+  │
+  ├── EXECUTE: Write code, edit files, run commands
+  ├── ARCHITECT: Read-only analysis after 3 failures
+  ├── SUPERVISE: Vision + mouse + keyboard for GUI tasks
+  │
+  ▼
+FLASH-LITE VERIFIER → PASS / RETRY / ESCALATE
+  │
+  ▼
+ANTI-LOOP SAFEGUARDS
+  ├── TTL: Max 10 hops → dead-letter queue
+  ├── Hysteresis: 3 failures → ARCHITECT, 2 successes → EXECUTE
+  └── Backflow: SHA-256 state hash → detect A-B-A cycles
+```
 
-**The key insight, inverted for legitimate use:**
-- GTG-1002 used it for attack. We use it for complex knowledge work.
-- The pattern works because of context isolation + structured handoffs + shared memory.
-- See GTG1002_ANALYSIS.md for the full technical breakdown.
+### Three Prompt Modes
+
+| Mode | When | Tools | Purpose |
+|------|------|-------|---------|
+| **EXECUTE** | First attempt | Bash, Read, Write, Edit, Glob, Grep | Write code, run commands |
+| **ARCHITECT** | After 3 failures | Read only | Root cause analysis, new plan |
+| **SUPERVISE** | GUI tasks | Computer Use + Bash + Read + Write | Install apps, click wizards |
+
+### Completion Loop
+
+```
+Task → Classify → Format Prompt → Execute (Claude) → Verify (Flash-Lite)
+                                                          │
+                                              PASS ← ─ ─ ┤
+                                              RETRY → anti-loop → retry
+                                              ESCALATE → dead-letter
+```
 
 ---
 
-## Key Design Principles
+## Project Structure
 
-1. **No single agent holds the whole picture** — context isolation prevents hallucination cascade
-2. **Structured file communication** — agents never talk directly; all handoffs via files
-3. **Orchestrator reads summaries, not raw data** — hub makes decisions, never discoveries
-4. **Shared memory via LLM cache** — Gemini holds the knowledge base; agents query it
-5. **Results only up the chain** — sub-agents summarize before passing to orchestrator
-6. **Fan-Out for parallelism** — independent workstreams run simultaneously
-7. **Fan-In before synthesis** — all branches complete before final assembly
-8. **3-tier model routing** — cheap for iteration, mid-tier for parallel work, flagship for synthesis
-9. **JSON task contracts** — schema-validated blueprints eliminate ambiguous prose prompts
-10. **TypeScript wrappers** — reliable MCP tool execution via code, not raw JSON-RPC
-11. **HITL on irreversible actions** — human approval gates for high-consequence operations
-12. **Automated audit trail** — every agent action logged and git-committed
-13. **Three prompt modes** — EXECUTE for full tools, ARCHITECT for read-only reasoning after failures, SUPERVISE for GUI tasks via Computer Use
-14. **Anti-loop safeguards** — TTL-bounded task envelopes with hysteresis and backflow detection prevent infinite retry loops
-15. **Brain damage prevention** — long-session context offloaded to Gemini MCP cache, keeping active context under ~50K tokens
-16. **Always-on access** — OpenClaw Gateway enables mobile/Telegram/Discord dispatch to the pipeline from anywhere
+```
+ai-agent-pipeline/
+├── src/                          # TypeScript runtime (42 files)
+│   ├── cli.ts                    # CLI entry point (8 commands)
+│   ├── commands/                 # CLI command implementations
+│   ├── orchestrator/             # Gemini completion loop engine
+│   │   ├── index.ts              # GeminiOrchestrator class
+│   │   ├── loop-driver.ts        # THE completion loop
+│   │   ├── classifier.ts         # Task type → mode/tier routing
+│   │   └── prompt-formatter.ts   # Template filling + security injection
+│   ├── executor/                 # Claude Code session management
+│   │   ├── index.ts              # ClaudeCodeExecutor class
+│   │   ├── session.ts            # Process spawning + output parsing
+│   │   └── modes.ts              # EXECUTE/ARCHITECT/SUPERVISE config
+│   ├── verifier/                 # Flash-Lite post-execution verification
+│   ├── anti-loop/                # TTL, hysteresis, backflow, dead-letter
+│   ├── gateway/                  # Webhook server + OpenClaw bridge
+│   ├── router/                   # Task → tier routing
+│   ├── decomposer/              # Research → task blueprints
+│   ├── security/                 # RBAC, HITL gates, Discord HITL
+│   ├── audit/                    # HMAC-signed tamper-evident logging
+│   ├── mcp-servers/              # Brain context MCP server
+│   ├── schema/                   # AJV JSON Schema validation
+│   ├── config/                   # YAML config loading
+│   ├── utils/                    # Logger, hash, template, retry
+│   └── types/                    # TypeScript interfaces
+├── schemas/                      # JSON Schema contracts
+├── templates/                    # Prompt templates (7 modes)
+├── config/                       # YAML configuration
+├── workflows/                    # N8n workflow exports
+├── docs/                         # Phase documentation (13 files)
+├── security/                     # Threat model, RBAC, HITL gates
+├── reports/                      # Agent execution reports
+└── prompts/                      # Task blueprint batches
+```
 
 ---
 
-## Validated Use Cases
+## Anti-Loop Safeguards
 
-| Domain | Orchestrator | Workers | Memory Layer |
-|--------|-------------|---------|-------------|
-| Legal defense (multi-front) | Claude Sonnet | 3 front agents + Red Team | Gemini (evidence manifest) |
-| Software engineering | Claude Sonnet | Feature agents by module | Gemini (codebase index) |
-| Research synthesis | Claude Opus | Domain specialist agents | Gemini (source documents) |
-| Business intelligence | Claude Sonnet | Data agents by department | Gemini (company knowledge base) |
-| Content production | Claude Haiku | Channel-specific writers | Gemini (brand guidelines) |
+Every task runs inside a **Task Envelope** that tracks execution state:
+
+```json
+{
+  "ttl_max": 10,
+  "hops": 0,
+  "mode": "EXECUTE",
+  "consecutive_failures": 0,
+  "consecutive_successes": 0,
+  "escalated": false,
+  "state_hashes": []
+}
+```
+
+**Three Laws:**
+1. **TTL** — Max 10 hops. Tasks exceeding TTL go to dead-letter queue with notification.
+2. **Hysteresis** — 3 failures → escalate to ARCHITECT. 2 successes → de-escalate. No flicker.
+3. **Backflow** — SHA-256 hash target files. If state matches a previous hop → A-B-A cycle detected → blocked.
+
+---
+
+## Security
+
+- **RBAC** — Per-node read/write/execute permissions
+- **HITL Gates** — Human approval for git push, deploy, delete, credential entry
+- **Discord HITL** — Rich embeds with approve/reject buttons, timeout defaults
+- **Prompt Injection Defense** — Security notice appended to every prompt
+- **Audit Trail** — HMAC-SHA256 signed entries, tamper detection via `pipeline audit verify`
+- **MCP Image Pinning** — SHA-256 digest verification for MCP server images
+
+---
+
+## Testing
+
+```bash
+npm test                                          # All 93 tests
+npx vitest run src/anti-loop/__tests__/           # Anti-loop unit tests (13)
+npx vitest run src/security/__tests__/            # Security + HITL tests (22)
+npx vitest run src/schema/__tests__/              # Schema validation (4)
+npx vitest run src/utils/__tests__/               # Retry/backoff tests (5)
+npx vitest run src/__tests__/integration.test.ts  # Integration tests (34)
+npx vitest run src/__tests__/e2e.test.ts          # E2E CLI tests (15)
+```
+
+---
+
+## Cost Model
+
+| Component | Type | Monthly Cost |
+|-----------|------|-------------|
+| Claude Code (Max 5x) | Fixed | $100 |
+| Gemini 3.1 Pro | Variable | $50-60 |
+| Gemini Flash-Lite | Variable | $1-3 |
+| **Total (moderate)** | — | **$150-165** |
+
+85-94% cheaper than all-Opus approaches via 3-tier model routing.
+
+---
+
+## Configuration
+
+Key files:
+- `.env` — API keys (GEMINI_API_KEY required)
+- `config/openclaw-config.yaml` — Gateway, orchestrator, verifier, anti-loop settings
+- `config/mcp-servers.yaml` — MCP server registry
+- `config/required-caches.yaml` — Gemini cache definitions
+- `security/rbac-config.md` — Per-node permissions
+- `security/hitl-gates.md` — Human approval gate definitions
 
 ---
 
 ## License
 
 MIT — use freely, adapt, extend. Attribution appreciated.
-Inspired by: GTG-1002 (adversarial), Project Titan (legal defense), Anthropic MCP docs.

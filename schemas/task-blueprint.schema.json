@@ -42,12 +42,40 @@
         },
         "mcp_tools_required": {
           "type": "array",
-          "items": { "type": "string", "enum": ["filesystem", "bash", "github", "knowledge", "search", "gemini-cache", "gemini-search", "gemini-deep-research"] }
+          "items": { "type": "string", "enum": ["filesystem", "bash", "github", "knowledge", "search", "gemini-cache", "gemini-search", "gemini-deep-research", "computer_use"] }
         },
         "context_queries": {
           "type": "array",
           "items": { "type": "string" },
           "description": "Queries to run against Gemini cache before starting task"
+        },
+        "gui_config": {
+          "type": "object",
+          "description": "Configuration for SUPERVISE mode GUI automation tasks",
+          "properties": {
+            "target_application": {
+              "type": "string",
+              "description": "Name of the legacy application (e.g., 'Dentrix', 'QuickBooks Desktop')"
+            },
+            "input_file": {
+              "type": "string",
+              "description": "Path to input data file (CSV, PDF, image)"
+            },
+            "record_count": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Expected number of records to process"
+            },
+            "url_allowlist": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Approved URLs the SUPERVISE agent can navigate to"
+            },
+            "visual_success_criteria": {
+              "type": "string",
+              "description": "What success looks like on screen (for verification)"
+            }
+          }
         }
       }
     },
@@ -55,7 +83,7 @@
       "type": "object",
       "required": ["report_file", "status_options"],
       "properties": {
-        "report_file": { "type": "string", "pattern": "^reports/.*\\.md$" },
+        "report_file": { "type": "string", "pattern": "^reports/.*\\.(md|json)$" },
         "status_options": {
           "type": "array",
           "items": { "type": "string", "enum": ["PASS", "FAIL", "PARTIAL", "BLOCKED"] }

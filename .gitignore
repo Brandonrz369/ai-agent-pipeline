@@ -79,3 +79,15 @@ Desktop.ini
 # Docker
 # ===========================
 .docker/
+
+# ===========================
+# Pipeline Runtime
+# ===========================
+.pipeline-run/
+.openclaw/
+
+# ===========================
+# Collaboration (ephemeral per-session)
+# ===========================
+.collab/
+collab/

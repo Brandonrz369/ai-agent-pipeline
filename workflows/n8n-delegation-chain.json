@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "path": "/root/ai-agent-pipeline/reports/",
+        "path": "/home/brans/ai-agent-pipeline/reports/",
         "events": ["add"],
         "options": {
           "ignored": "**/.gitkeep,**/redteam_*"
@@ -111,7 +111,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Determine next task in the delegation chain\nconst fs = require('fs');\nconst data = $input.first().json;\nconst currentNode = data.node_number;\nconst batchNumber = data.batch_number;\n\n// Delegation chain: Node 2 (schemas) -> Node 3 (research) -> Node 4 (code) -> Node 5 (workflows) -> Red Team\nconst chainOrder = [2, 3, 4, 5];\nconst currentIndex = chainOrder.indexOf(currentNode);\n\nlet nextAction = 'BATCH_COMPLETE';\nlet nextNode = null;\nlet nextTaskFile = null;\n\nif (currentIndex >= 0 && currentIndex < chainOrder.length - 1) {\n  nextNode = chainOrder[currentIndex + 1];\n  nextAction = 'DISPATCH_NEXT';\n  \n  // Check if a task file exists for the next node\n  const promptsDir = '/root/ai-agent-pipeline/prompts/';\n  const expectedFile = `batch${batchNumber}_n${nextNode}_tasks.json`;\n  nextTaskFile = promptsDir + expectedFile;\n  \n  // If the task file exists, read it; otherwise create dispatch signal\n  if (fs.existsSync(nextTaskFile)) {\n    nextAction = 'DISPATCH_NEXT';\n  } else {\n    nextAction = 'SIGNAL_ORCHESTRATOR';\n  }\n} else if (currentIndex === chainOrder.length - 1) {\n  // Last node completed — trigger red team\n  nextAction = 'TRIGGER_RED_TEAM';\n}\n\nreturn [{\n  json: {\n    ...data,\n    next_action: nextAction,\n    next_node: nextNode,\n    next_task_file: nextTaskFile,\n    delegation_chain_position: `${currentIndex + 1}/${chainOrder.length}`\n  }\n}];"
+        "jsCode": "// Determine next task in the delegation chain\nconst fs = require('fs');\nconst data = $input.first().json;\nconst currentNode = data.node_number;\nconst batchNumber = data.batch_number;\n\n// Delegation chain: Node 2 (schemas) -> Node 3 (research) -> Node 4 (code) -> Node 5 (workflows) -> Red Team\nconst chainOrder = [2, 3, 4, 5];\nconst currentIndex = chainOrder.indexOf(currentNode);\n\nlet nextAction = 'BATCH_COMPLETE';\nlet nextNode = null;\nlet nextTaskFile = null;\n\nif (currentIndex >= 0 && currentIndex < chainOrder.length - 1) {\n  nextNode = chainOrder[currentIndex + 1];\n  nextAction = 'DISPATCH_NEXT';\n  \n  // Check if a task file exists for the next node\n  const promptsDir = '/home/brans/ai-agent-pipeline/prompts/';\n  const expectedFile = `batch${batchNumber}_n${nextNode}_tasks.json`;\n  nextTaskFile = promptsDir + expectedFile;\n  \n  // If the task file exists, read it; otherwise create dispatch signal\n  if (fs.existsSync(nextTaskFile)) {\n    nextAction = 'DISPATCH_NEXT';\n  } else {\n    nextAction = 'SIGNAL_ORCHESTRATOR';\n  }\n} else if (currentIndex === chainOrder.length - 1) {\n  // Last node completed — trigger red team\n  nextAction = 'TRIGGER_RED_TEAM';\n}\n\nreturn [{\n  json: {\n    ...data,\n    next_action: nextAction,\n    next_node: nextNode,\n    next_task_file: nextTaskFile,\n    delegation_chain_position: `${currentIndex + 1}/${chainOrder.length}`\n  }\n}];"
       },
       "id": "b1b2c3d4-e5f6-7890-abcd-200000000006",
       "name": "Determine Next Task",
@@ -132,8 +132,8 @@
       "position": [1490, 100],
       "credentials": {
         "discordWebhookApi": {
-          "id": "[REPLACE_CREDENTIAL_ID]",
-          "name": "[REPLACE] Pipeline Discord Webhook"
+          "id": "pipeline-discord-webhook",
+          "name": "Pipeline Discord Webhook"
         }
       }
     },
@@ -150,8 +150,8 @@
       "position": [1240, 400],
       "credentials": {
         "discordWebhookApi": {
-          "id": "[REPLACE_CREDENTIAL_ID]",
-          "name": "[REPLACE] Pipeline Discord Webhook"
+          "id": "pipeline-discord-webhook",
+          "name": "Pipeline Discord Webhook"
         }
       }
     },
@@ -168,8 +168,8 @@
       "position": [1240, 600],
       "credentials": {
         "discordWebhookApi": {
-          "id": "[REPLACE_CREDENTIAL_ID]",
-          "name": "[REPLACE] Pipeline Discord Webhook"
+          "id": "pipeline-discord-webhook",
+          "name": "Pipeline Discord Webhook"
         }
       }
     },
@@ -291,7 +291,7 @@
   },
   "versionId": "delegation-chain-v1-2026-02-22",
   "meta": {
-    "instanceId": "[REPLACE_N8N_INSTANCE_ID]",
+    "instanceId": "ai-pipeline-local-001",
     "templateCredsSetupCompleted": false
   },
   "tags": [
