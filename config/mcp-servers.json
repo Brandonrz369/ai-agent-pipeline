@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "gemini-antigravity": {
+      "command": "npx",
+      "args": ["tsx", "src/mcp-servers/gemini-antigravity/server.ts"],
+      "cwd": "/home/brans/ai-agent-pipeline",
+      "env": {
+        "ANTIGRAVITY_URL": "http://127.0.0.1:8080"
+      }
+    },
+    "brain-context": {
+      "command": "npx",
+      "args": ["tsx", "src/mcp-servers/brain-context/server.ts"],
+      "cwd": "/home/brans/ai-agent-pipeline",
+      "env": {
+        "GEMINI_API_KEY": "REDACTED_GEMINI_API_KEY"
+      }
+    }
+  }
+}

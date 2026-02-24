@@ -1,12 +1,22 @@
 #!/bin/bash
-# OpenClaw Pipeline Driver — The "whip" that drives Claude Code sessions
+# NEXUS — OpenClaw Pipeline Driver
 #
-# V3 Blueprint Architecture:
-#   Gemini 3.1 Pro = Traffic cop — reads state, formats prompts, routes
-#   Claude Code "Brain" = Makes ALL decisions — what to do, how, why
-#   Claude Code Workers = Bravo/Charlie executing tasks
+# The autonomous orchestrator that drives the AI Agent Pipeline.
+# NEXUS reads state, routes decisions, and spawns agent sessions.
 #
-# The brain does the thinking. Gemini just reads state and passes it to the brain.
+# Agent Hierarchy:
+#   NEXUS   = OpenClaw + Gemini 3.1 Pro (this script) — traffic cop
+#   ORACLE  = Claude Code brain session — strategic decisions
+#   ALPHA   = Claude Code supervisor — reviews, unblocks, also works
+#   BRAVO   = Claude Code builder 1 — execution path
+#   CHARLIE = Claude Code builder 2 — verification path
+#
+# Fallback chain:
+#   1. ORACLE (Claude Code brain)     → best decisions, costs tokens
+#   2. Gemini 3.1 Pro (Antigravity)   → free, good decisions
+#   3. Hardcoded fallback              → generic prompts, always works
+#
+# When Claude tokens are exhausted → notify user on Discord via Gemini
 
 set -euo pipefail
 
@@ -15,6 +25,8 @@ COLLAB_DIR="$PIPELINE_DIR/.collab"
 STATE_FILE="$HOME/.openclaw/state/pipeline-driver.json"
 LOCK_FILE="/tmp/pipeline-driver.lock"
 LOG_FILE="$HOME/.openclaw/logs/pipeline-driver.log"
+TMP_DIR="/tmp/pipeline-driver"
+MCP_CONFIG="$PIPELINE_DIR/config/mcp-servers.json"
 
 # Prevent concurrent runs
 if [ -f "$LOCK_FILE" ]; then
@@ -27,162 +39,242 @@ fi
 echo $$ > "$LOCK_FILE"
 trap 'rm -f "$LOCK_FILE"' EXIT
 
-mkdir -p "$(dirname "$STATE_FILE")" "$(dirname "$LOG_FILE")"
+mkdir -p "$(dirname "$STATE_FILE")" "$(dirname "$LOG_FILE")" "$TMP_DIR"
 
 log() {
-  echo "$(date -Iseconds) $1" | tee -a "$LOG_FILE"
+  echo "$(date -Iseconds) NEXUS: $1" | tee -a "$LOG_FILE"
 }
 
-log "=== Pipeline Driver Run ==="
+log "=== NEXUS Pipeline Driver Run ==="
 
-# ─── Step 1: Read state (Gemini's job — simple data gathering) ────────
-TASKBOARD=$(cat "$COLLAB_DIR/shared/TASKBOARD.md" 2>/dev/null || echo "No taskboard")
-MESSAGES=$(tail -40 "$COLLAB_DIR/shared/MESSAGES.md" 2>/dev/null || echo "No messages")
-BRAVO_STATUS=$(cat "$COLLAB_DIR/bravo/STATUS.md" 2>/dev/null || echo "UNKNOWN")
-CHARLIE_STATUS=$(cat "$COLLAB_DIR/charlie/STATUS.md" 2>/dev/null || echo "UNKNOWN")
-ALPHA_STATUS=$(cat "$COLLAB_DIR/alpha/STATUS.md" 2>/dev/null || echo "UNKNOWN")
-
-# Check which tmux sessions are actually running
+# ─── Step 1: Read state ──────────────────────────────────────────────
+ALPHA_RUNNING=$(tmux has-session -t "alpha-supervisor" 2>/dev/null && echo "yes" || echo "no")
 BRAVO_RUNNING=$(tmux has-session -t "bravo-work" 2>/dev/null && echo "yes" || echo "no")
 CHARLIE_RUNNING=$(tmux has-session -t "charlie-work" 2>/dev/null && echo "yes" || echo "no")
 
-log "State: Bravo tmux=$BRAVO_RUNNING, Charlie tmux=$CHARLIE_RUNNING"
+log "State: ALPHA tmux=$ALPHA_RUNNING, BRAVO tmux=$BRAVO_RUNNING, CHARLIE tmux=$CHARLIE_RUNNING"
 
-# ─── Step 2: Spawn Claude Code BRAIN for decisions ───────────────────
-# This is the key V3 insight: Claude Code makes ALL decisions.
-# Gemini just gathered the state above. Now Claude Code brain decides.
-
-BRAIN_PROMPT="You are the BRAIN for the OpenClaw Pipeline Driver. You make ALL strategic decisions.
-
-CURRENT STATE:
----
-TASKBOARD:
-$(echo "$TASKBOARD" | head -40)
----
-RECENT MESSAGES (last 40 lines):
-$(echo "$MESSAGES" | tail -40)
----
-AGENT STATUS:
-- Bravo: $(echo "$BRAVO_STATUS" | head -5)
-  Bravo tmux session running: $BRAVO_RUNNING
-- Charlie: $(echo "$CHARLIE_STATUS" | head -5)
-  Charlie tmux session running: $CHARLIE_RUNNING
-- Alpha: $(echo "$ALPHA_STATUS" | head -3)
----
-
-PROJECTS:
-- AI Agent Pipeline: /home/brans/ai-agent-pipeline/ (107 tests, build clean)
-- Legacy Automation Agency: /home/brans/legacy-automation-agency/ (~85% built)
-
-YOUR JOB: Decide what each worker agent should do RIGHT NOW.
-
-Rules:
-1. If an agent has no running tmux session, they need to be spawned with a task
-2. If an agent is actively working (tmux running + recent STATUS update), let them continue
-3. If a STATUS says WORKING but tmux is dead, the agent crashed — respawn them
-4. Always check TASKBOARD for OPEN tasks before assigning
-5. Be specific: don't say 'continue work' — say exactly what file to create/edit
-
-Reply with ONLY valid JSON, no markdown fences:
-{\"spawn_bravo\": true/false, \"bravo_prompt\": \"exact prompt for Bravo's claude -p session\", \"spawn_charlie\": true/false, \"charlie_prompt\": \"exact prompt for Charlie's claude -p session\", \"reasoning\": \"why\"}"
-
-log "Spawning Claude Code brain session for decision..."
-
-BRAIN_DECISION=$(env -u CLAUDECODE claude -p "$BRAIN_PROMPT" --output-format json 2>/dev/null || echo "")
-
-# Parse brain output — claude --output-format json wraps in {"type":"result","result":"..."}
-DECISION=$(python3 << PYEOF
-import json, re, sys
-
-raw = '''$( echo "$BRAIN_DECISION" | sed "s/'/'\\\\''/g" )'''
-
-try:
-    # Try parsing as Claude JSON output format
-    outer = json.loads(raw)
-    text = outer.get("result", raw)
-except:
-    text = raw
-
-# Find JSON object in text
-match = re.search(r'\{[^{}]*("spawn_bravo"|"spawn_charlie")[^{}]*\}', text, re.DOTALL)
-if match:
-    try:
-        decision = json.loads(match.group())
-        print(json.dumps(decision))
-    except:
-        print('{"error": "json_parse_failed", "raw": ' + json.dumps(text[:300]) + '}')
-else:
-    # Try finding any JSON
-    match2 = re.search(r'\{[\s\S]*\}', text)
-    if match2:
-        try:
-            print(json.dumps(json.loads(match2.group())))
-        except:
-            print('{"error": "no_valid_json", "raw": ' + json.dumps(text[:300]) + '}')
-    else:
-        print('{"error": "no_json", "raw": ' + json.dumps(text[:300]) + '}')
-PYEOF
-)
-
-if echo "$DECISION" | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); assert 'error' not in d" 2>/dev/null; then
-  log "Brain decision: $DECISION"
-else
-  log "WARN: Brain decision failed: $DECISION"
-  # Fallback: spawn both if they're not running
-  DECISION="{\"spawn_bravo\": $([ "$BRAVO_RUNNING" = "no" ] && echo "true" || echo "false"), \"bravo_prompt\": \"You are BRAVO. Read /home/brans/ai-agent-pipeline/.collab/shared/TASKBOARD.md and work on the first OPEN task assigned to you. Update bravo/STATUS.md when done.\", \"spawn_charlie\": $([ "$CHARLIE_RUNNING" = "no" ] && echo "true" || echo "false"), \"charlie_prompt\": \"You are CHARLIE. Read /home/brans/ai-agent-pipeline/.collab/shared/TASKBOARD.md and work on the first OPEN task assigned to you. Update charlie/STATUS.md when done.\", \"reasoning\": \"Fallback: spawning idle agents\"}"
-  log "Using fallback: $DECISION"
+# If all three are running, nothing to do
+if [ "$ALPHA_RUNNING" = "yes" ] && [ "$BRAVO_RUNNING" = "yes" ] && [ "$CHARLIE_RUNNING" = "yes" ]; then
+  log "All agents running. Nothing to do."
+  log "=== NEXUS run complete ==="
+  exit 0
 fi
 
-# ─── Step 3: Post brain's decision to MESSAGES.md ────────────────────
+# ─── Step 2: Build context ───────────────────────────────────────────
+# Write context to temp files to avoid heredoc/quoting issues
+python3 -c "
+import json
+
+def read_file(path, fallback='UNKNOWN', max_chars=800):
+    try:
+        with open(path) as f:
+            return f.read()[:max_chars]
+    except:
+        return fallback
+
+collab = '/home/brans/ai-agent-pipeline/.collab'
+ctx = {
+    'taskboard': read_file(f'{collab}/shared/TASKBOARD.md', 'No taskboard', 1500),
+    'alpha_status': read_file(f'{collab}/alpha/STATUS.md', 'UNKNOWN', 400),
+    'bravo_status': read_file(f'{collab}/bravo/STATUS.md', 'UNKNOWN', 400),
+    'charlie_status': read_file(f'{collab}/charlie/STATUS.md', 'UNKNOWN', 400),
+}
+
+# Extract just OPEN tasks for a cleaner prompt
+lines = ctx['taskboard'].split('\n')
+open_lines = []
+for line in lines:
+    if 'OPEN' in line or 'WORKING' in line:
+        open_lines.append(line.strip())
+
+with open('/tmp/pipeline-driver/context.json', 'w') as f:
+    json.dump(ctx, f)
+with open('/tmp/pipeline-driver/open-tasks.txt', 'w') as f:
+    f.write('\n'.join(open_lines) if open_lines else 'No OPEN tasks found')
+with open('/tmp/pipeline-driver/alpha-status.txt', 'w') as f:
+    f.write(ctx['alpha_status'][:200])
+with open('/tmp/pipeline-driver/bravo-status.txt', 'w') as f:
+    f.write(ctx['bravo_status'][:200])
+with open('/tmp/pipeline-driver/charlie-status.txt', 'w') as f:
+    f.write(ctx['charlie_status'][:200])
+"
+
+OPEN_TASKS=$(cat "$TMP_DIR/open-tasks.txt")
+ALPHA_STATUS_TEXT=$(cat "$TMP_DIR/alpha-status.txt")
+BRAVO_STATUS_TEXT=$(cat "$TMP_DIR/bravo-status.txt")
+CHARLIE_STATUS_TEXT=$(cat "$TMP_DIR/charlie-status.txt")
+
+# Write the ORACLE decision prompt to a file (avoids shell escaping nightmares)
+cat > "$TMP_DIR/brain-prompt.txt" << 'PROMPT_END'
+You are ORACLE, the strategic brain for the AI Agent Pipeline. Read .collab/oracle/IDENTITY.md for your full instructions. Your job is to decide which agents to spawn and what tasks to give them.
+
+AGENT STATUS:
+PROMPT_END
+
+# Append dynamic state (using printf to avoid heredoc issues)
+printf -- "- ALPHA (supervisor) tmux session running: %s | Status: %s\n" "$ALPHA_RUNNING" "$ALPHA_STATUS_TEXT" >> "$TMP_DIR/brain-prompt.txt"
+printf -- "- BRAVO (builder 1) tmux session running: %s | Status: %s\n" "$BRAVO_RUNNING" "$BRAVO_STATUS_TEXT" >> "$TMP_DIR/brain-prompt.txt"
+printf -- "- CHARLIE (builder 2) tmux session running: %s | Status: %s\n" "$CHARLIE_RUNNING" "$CHARLIE_STATUS_TEXT" >> "$TMP_DIR/brain-prompt.txt"
+
+cat >> "$TMP_DIR/brain-prompt.txt" << 'PROMPT_END'
+
+OPEN/WORKING TASKS FROM TASKBOARD:
+PROMPT_END
+
+echo "$OPEN_TASKS" >> "$TMP_DIR/brain-prompt.txt"
+
+cat >> "$TMP_DIR/brain-prompt.txt" << 'PROMPT_END'
+
+RULES:
+1. If tmux=no, the agent needs to be respawned with a specific task
+2. If tmux=yes, leave the agent alone (do NOT spawn)
+3. ALPHA should ALWAYS be running — if tmux=no, always spawn ALPHA
+4. ALPHA's prompt must start with: "Read .collab/alpha/IDENTITY.md first."
+5. BRAVO's prompt must start with: "Read .collab/bravo/IDENTITY.md first."
+6. CHARLIE's prompt must start with: "Read .collab/charlie/IDENTITY.md first."
+7. Pick the first OPEN task assigned to that agent from the TASKBOARD
+8. Be VERY specific in prompts: tell the agent exactly which files to read/create, give step-by-step instructions
+9. Tell BRAVO and CHARLIE to EXIT when done. Tell ALPHA to stand by after supervision.
+
+Reply with ONLY a JSON object. Do NOT wrap in markdown code fences. No backticks. No explanation.
+{"spawn_alpha": true/false, "alpha_prompt": "exact prompt text", "spawn_bravo": true/false, "bravo_prompt": "exact prompt text", "spawn_charlie": true/false, "charlie_prompt": "exact prompt text", "reasoning": "brief"}
+PROMPT_END
+
+DECISION_PROMPT=$(cat "$TMP_DIR/brain-prompt.txt")
+
+# ─── Step 3: Try ORACLE (Claude Code brain) first ────────────────────
+DECISION=""
+TOKENS_EXHAUSTED="false"
+
+log "Consulting ORACLE (Claude Code brain)..."
+timeout 180 env -u CLAUDECODE claude -p "$DECISION_PROMPT" --output-format json > "$TMP_DIR/brain-raw.json" 2>"$TMP_DIR/brain-stderr.txt" || true
+
+# Check for token exhaustion
+if grep -qi "out of extra usage\|rate limit\|quota exceeded\|tokens exhausted" "$TMP_DIR/brain-stderr.txt" "$TMP_DIR/brain-raw.json" 2>/dev/null; then
+  TOKENS_EXHAUSTED="true"
+  log "Claude Code tokens EXHAUSTED. Will use Gemini fallback."
+fi
+
+# Parse ORACLE output (using temp file — no heredoc quoting issues)
+if [ -s "$TMP_DIR/brain-raw.json" ] && [ "$TOKENS_EXHAUSTED" = "false" ]; then
+  DECISION=$(python3 "$PIPELINE_DIR/scripts/parse-brain-output.py" "$TMP_DIR/brain-raw.json" 2>/dev/null || echo "")
+fi
+
+if [ -n "$DECISION" ] && [ "$DECISION" != "" ]; then
+  log "ORACLE decision: $(echo "$DECISION" | head -c 400)"
+else
+  # ─── Fallback: Use Gemini 3.1 Pro via Antigravity (FREE) ───────────
+  log "ORACLE unavailable. NEXUS falling back to Gemini 3.1 Pro via Antigravity..."
+
+  # Write Gemini prompt to file
+  DECISION=$(python3 "$PIPELINE_DIR/scripts/gemini-fallback.py" \
+    "$ALPHA_RUNNING" "$BRAVO_RUNNING" "$CHARLIE_RUNNING" "$TMP_DIR/open-tasks.txt" 2>/dev/null || echo "")
+
+  if [ -n "$DECISION" ] && [ "$DECISION" != "" ]; then
+    log "NEXUS Gemini fallback decision: $(echo "$DECISION" | head -c 400)"
+  else
+    log "Both ORACLE and Gemini failed. NEXUS using hardcoded fallback."
+    DECISION=$(python3 -c "
+import json
+d = {
+    'spawn_alpha': $([ "$ALPHA_RUNNING" = "no" ] && echo "True" || echo "False"),
+    'alpha_prompt': 'Read /home/brans/ai-agent-pipeline/.collab/alpha/IDENTITY.md first. Then check TASKBOARD.md. Supervise BRAVO and CHARLIE, review completed work, and work on any unassigned P1+ tasks yourself. Stand by after supervision.',
+    'spawn_bravo': $([ "$BRAVO_RUNNING" = "no" ] && echo "True" || echo "False"),
+    'bravo_prompt': 'Read /home/brans/ai-agent-pipeline/.collab/bravo/IDENTITY.md first. Then check TASKBOARD.md. Work on the first OPEN task assigned to you. Update .collab/bravo/STATUS.md when done. EXIT when finished.',
+    'spawn_charlie': $([ "$CHARLIE_RUNNING" = "no" ] && echo "True" || echo "False"),
+    'charlie_prompt': 'Read /home/brans/ai-agent-pipeline/.collab/charlie/IDENTITY.md first. Then check TASKBOARD.md. Work on the first OPEN task assigned to you. Update .collab/charlie/STATUS.md when done. EXIT when finished.',
+    'reasoning': 'NEXUS hardcoded fallback — spawning idle agents with identity-file prompts'
+}
+print(json.dumps(d))
+")
+    log "NEXUS hardcoded fallback: $(echo "$DECISION" | head -c 300)"
+  fi
+fi
+
+# ─── Step 4: Discord notification if tokens exhausted ────────────────
+if [ "$TOKENS_EXHAUSTED" = "true" ]; then
+  log "Sending Discord notification about token exhaustion..."
+  python3 "$PIPELINE_DIR/scripts/discord-notify.py" \
+    "Claude Code tokens exhausted" \
+    "NEXUS detected that Claude Code tokens are exhausted. Agents are being driven by Gemini 3.1 Pro (via Antigravity) with limited decision quality. Tokens should reset at midnight. Want me to: run deep research, cache files, or do other Gemini-powered work while we wait?" \
+    2>/dev/null || log "WARN: Discord notification failed"
+fi
+
+# ─── Step 5: Post to MESSAGES.md ─────────────────────────────────────
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%MZ")
-REASONING=$(echo "$DECISION" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('reasoning','No reasoning'))" 2>/dev/null || echo "Auto-assigned")
+REASONING=$(echo "$DECISION" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('reasoning','Auto'))" 2>/dev/null || echo "Auto")
 
-cat >> "$COLLAB_DIR/shared/MESSAGES.md" << EOF
+{
+  echo ""
+  echo "[$TIMESTAMP] NEXUS→ALL: **Automated assignment**"
+  echo "- $REASONING"
+  echo "- ALPHA tmux: $ALPHA_RUNNING | BRAVO tmux: $BRAVO_RUNNING | CHARLIE tmux: $CHARLIE_RUNNING"
+} >> "$COLLAB_DIR/shared/MESSAGES.md"
 
-[$TIMESTAMP] OPENCLAW-DRIVER→ALL: **Automated assignment** (Claude Code brain decision)
-- Reasoning: $REASONING
-- Bravo tmux running: $BRAVO_RUNNING
-- Charlie tmux running: $CHARLIE_RUNNING
-EOF
+# ─── Step 6: SPAWN agent sessions ────────────────────────────────────
+SPAWN_ALPHA=$(echo "$DECISION" | python3 -c "import sys,json; v=json.loads(sys.stdin.read()).get('spawn_alpha',False); print('true' if v else 'false')" 2>/dev/null || echo "false")
+SPAWN_BRAVO=$(echo "$DECISION" | python3 -c "import sys,json; v=json.loads(sys.stdin.read()).get('spawn_bravo',False); print('true' if v else 'false')" 2>/dev/null || echo "false")
+SPAWN_CHARLIE=$(echo "$DECISION" | python3 -c "import sys,json; v=json.loads(sys.stdin.read()).get('spawn_charlie',False); print('true' if v else 'false')" 2>/dev/null || echo "false")
 
-# ─── Step 4: ACTUALLY SPAWN worker sessions ──────────────────────────
-SPAWN_BRAVO=$(echo "$DECISION" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('spawn_bravo', False))" 2>/dev/null || echo "False")
-SPAWN_CHARLIE=$(echo "$DECISION" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('spawn_charlie', False))" 2>/dev/null || echo "False")
+# MCP config flag for Gemini tools via Antigravity
+MCP_FLAG=""
+if [ -f "$MCP_CONFIG" ]; then
+  MCP_FLAG="--mcp-config $MCP_CONFIG"
+fi
 
-if [ "$SPAWN_BRAVO" = "True" ] || [ "$SPAWN_BRAVO" = "true" ]; then
-  BRAVO_PROMPT=$(echo "$DECISION" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('bravo_prompt','Read TASKBOARD.md and work on your next OPEN task.'))" 2>/dev/null || echo "Read TASKBOARD.md and work on your next OPEN task.")
+# ─── Spawn ALPHA (supervisor — persistent) ───────────────────────────
+if [ "$SPAWN_ALPHA" = "true" ]; then
+  echo "$DECISION" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('alpha_prompt','Read .collab/alpha/IDENTITY.md first. Then check TASKBOARD.md and supervise.'))" > "$TMP_DIR/alpha-prompt.txt" 2>/dev/null
 
-  log "SPAWNING Bravo worker session..."
+  log "NEXUS: Spawning ALPHA (supervisor)..."
+  tmux kill-session -t "alpha-supervisor" 2>/dev/null || true
+  tmux new-session -d -s "alpha-supervisor" \
+    "cd $PIPELINE_DIR && env -u CLAUDECODE claude -p \"\$(cat /tmp/pipeline-driver/alpha-prompt.txt)\" $MCP_FLAG --output-format json 2>&1 | tee -a $LOG_FILE; echo 'ALPHA SESSION ENDED at '\$(date) >> $LOG_FILE; sleep 10" 2>/dev/null \
+    && log "NEXUS: ALPHA STARTED (alpha-supervisor)" \
+    || log "WARN: ALPHA spawn failed"
+fi
+
+# ─── Spawn BRAVO (builder 1 — execution path) ────────────────────────
+if [ "$SPAWN_BRAVO" = "true" ]; then
+  echo "$DECISION" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('bravo_prompt','Read .collab/bravo/IDENTITY.md first. Then check TASKBOARD.md.'))" > "$TMP_DIR/bravo-prompt.txt" 2>/dev/null
+
+  log "NEXUS: Spawning BRAVO (builder 1)..."
   tmux kill-session -t "bravo-work" 2>/dev/null || true
   tmux new-session -d -s "bravo-work" \
-    "cd $PIPELINE_DIR && env -u CLAUDECODE claude -p '$BRAVO_PROMPT' --output-format json; echo 'SESSION ENDED'; sleep 5" 2>/dev/null \
-    && log "Bravo tmux session STARTED" \
-    || log "WARN: Failed to start Bravo tmux"
+    "cd $PIPELINE_DIR && env -u CLAUDECODE claude -p \"\$(cat /tmp/pipeline-driver/bravo-prompt.txt)\" $MCP_FLAG --output-format json 2>&1 | tee -a $LOG_FILE; echo 'BRAVO SESSION ENDED at '\$(date) >> $LOG_FILE; sleep 10" 2>/dev/null \
+    && log "NEXUS: BRAVO STARTED (bravo-work)" \
+    || log "WARN: BRAVO spawn failed"
 fi
 
-if [ "$SPAWN_CHARLIE" = "True" ] || [ "$SPAWN_CHARLIE" = "true" ]; then
-  CHARLIE_PROMPT=$(echo "$DECISION" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('charlie_prompt','Read TASKBOARD.md and work on your next OPEN task.'))" 2>/dev/null || echo "Read TASKBOARD.md and work on your next OPEN task.")
+# ─── Spawn CHARLIE (builder 2 — verification path) ───────────────────
+if [ "$SPAWN_CHARLIE" = "true" ]; then
+  echo "$DECISION" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('charlie_prompt','Read .collab/charlie/IDENTITY.md first. Then check TASKBOARD.md.'))" > "$TMP_DIR/charlie-prompt.txt" 2>/dev/null
 
-  log "SPAWNING Charlie worker session..."
+  log "NEXUS: Spawning CHARLIE (builder 2)..."
   tmux kill-session -t "charlie-work" 2>/dev/null || true
   tmux new-session -d -s "charlie-work" \
-    "cd $PIPELINE_DIR && env -u CLAUDECODE claude -p '$CHARLIE_PROMPT' --output-format json; echo 'SESSION ENDED'; sleep 5" 2>/dev/null \
-    && log "Charlie tmux session STARTED" \
-    || log "WARN: Failed to start Charlie tmux"
+    "cd $PIPELINE_DIR && env -u CLAUDECODE claude -p \"\$(cat /tmp/pipeline-driver/charlie-prompt.txt)\" $MCP_FLAG --output-format json 2>&1 | tee -a $LOG_FILE; echo 'CHARLIE SESSION ENDED at '\$(date) >> $LOG_FILE; sleep 10" 2>/dev/null \
+    && log "NEXUS: CHARLIE STARTED (charlie-work)" \
+    || log "WARN: CHARLIE spawn failed"
 fi
 
-# ─── Step 5: Save state ──────────────────────────────────────────────
+# ─── Step 7: Save state ──────────────────────────────────────────────
 python3 -c "
 import json
 from datetime import datetime
 state = {
     'last_run': datetime.now().isoformat(),
-    'decision': json.loads('''$(echo "$DECISION" | sed "s/'/'\\\\''/g")'''),
+    'alpha_tmux': '$ALPHA_RUNNING',
     'bravo_tmux': '$BRAVO_RUNNING',
     'charlie_tmux': '$CHARLIE_RUNNING',
+    'spawn_alpha': '$SPAWN_ALPHA' == 'true',
+    'spawn_bravo': '$SPAWN_BRAVO' == 'true',
+    'spawn_charlie': '$SPAWN_CHARLIE' == 'true',
+    'tokens_exhausted': '$TOKENS_EXHAUSTED' == 'true',
 }
 with open('$STATE_FILE', 'w') as f:
     json.dump(state, f, indent=2)
 " 2>/dev/null || log "WARN: Failed to save state"
 
-log "=== Driver run complete ==="
+log "=== NEXUS run complete ==="
