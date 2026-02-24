@@ -97,6 +97,15 @@ program
   });
 
 program
+  .command('legacy-dispatch <task-json>')
+  .description('Dispatch a Legacy Agency task through the pipeline')
+  .option('--dry-run', 'Convert and classify without executing')
+  .action(async (taskJson, opts) => {
+    const { legacyDispatchCommand } = await import('./commands/legacy-dispatch.js');
+    await legacyDispatchCommand(taskJson, opts);
+  });
+
+program
   .command('status')
   .description('Show active tasks, caches, and connections')
   .action(async () => {

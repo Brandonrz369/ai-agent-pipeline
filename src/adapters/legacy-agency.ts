@@ -10,6 +10,12 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { writeFile, mkdir, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { GeminiOrchestrator } from '../orchestrator/index.js';
+import type { LoopResult } from '../orchestrator/loop-driver.js';
+import { logAuditEntry } from '../audit/index.js';
+import { logger } from '../utils/logger.js';
 import type { TaskBlueprint, TaskType, PromptMode, Priority, Tier } from '../types/index.js';
 
 export interface LegacyAgencyTask {
@@ -74,7 +80,10 @@ export function convertBatch(tasks: LegacyAgencyTask[]): TaskBlueprint[] {
 // ─── Internal Helpers ────────────────────────────────────────────
 
 function formatTaskId(task: LegacyAgencyTask): string {
-  const seq = String(Math.floor(Math.random() * 999)).padStart(3, '0');
+  // Generate a deterministic 3-digit sequence from task id or random
+  const source = task.id || randomUUID();
+  const hash = source.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+  const seq = String(hash % 1000).padStart(3, '0');
   const year = new Date().getFullYear();
   return `LEGACY-${year}-${seq}-B1-N1`;
 }
@@ -137,7 +146,7 @@ function buildInstructions(task: LegacyAgencyTask): string[] {
 function getMcpTools(mode: PromptMode): string[] {
   switch (mode) {
     case 'SUPERVISE':
-      return ['filesystem', 'bash', 'gemini-cache'];
+      return ['filesystem', 'bash', 'computer_use', 'gemini-cache'];
     case 'ARCHITECT':
       return ['filesystem', 'gemini-cache'];
     default:
@@ -162,4 +171,190 @@ function getWriteScope(task: LegacyAgencyTask): string[] {
     'results/',
     'screenshots/',
   ];
+}
+
+// ─── Pipeline Adapter (async bridge) ────────────────────────────
+
+export type AdapterTaskStatus =
+  | 'submitted'
+  | 'dispatching'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'dead_letter';
+
+export interface TrackedTask {
+  legacyId: string;
+  pipelineTaskId: string;
+  blueprint: TaskBlueprint;
+  status: AdapterTaskStatus;
+  submittedAt: string;
+  completedAt?: string;
+  result?: LoopResult;
+  error?: string;
+}
+
+export interface PipelineAdapterConfig {
+  pipelineDir: string;
+  resultsDir?: string;
+  dryRun?: boolean;
+  onStatusChange?: (legacyId: string, status: AdapterTaskStatus, result?: LoopResult) => void;
+}
+
+/**
+ * PipelineAdapter — bridges the Legacy Agency Express server to our pipeline.
+ *
+ * Usage from Legacy Agency server.js:
+ *   const adapter = new PipelineAdapter({ pipelineDir: '/home/brans/ai-agent-pipeline' });
+ *   const { taskId } = await adapter.submit(legacyTask);
+ *   // later:
+ *   const status = adapter.getStatus(taskId);
+ */
+export class PipelineAdapter {
+  private config: PipelineAdapterConfig;
+  private orchestrator: GeminiOrchestrator;
+  private tasks: Map<string, TrackedTask> = new Map();
+
+  constructor(config: PipelineAdapterConfig) {
+    this.config = config;
+    this.orchestrator = new GeminiOrchestrator({
+      dryRun: config.dryRun,
+      cwd: config.pipelineDir,
+    });
+  }
+
+  /**
+   * Submit a legacy agency task for pipeline processing.
+   * Returns immediately with task IDs. Dispatches asynchronously.
+   */
+  async submit(legacyTask: LegacyAgencyTask): Promise<{
+    legacyId: string;
+    pipelineTaskId: string;
+  }> {
+    const legacyId = legacyTask.id || `LEGACY-${Date.now()}-${randomUUID().slice(0, 8)}`;
+    const blueprint = convertToBlueprint({ ...legacyTask, id: legacyId });
+
+    const tracked: TrackedTask = {
+      legacyId,
+      pipelineTaskId: blueprint.task_id,
+      blueprint,
+      status: 'submitted',
+      submittedAt: new Date().toISOString(),
+    };
+    this.tasks.set(legacyId, tracked);
+
+    // Save blueprint to disk for audit trail
+    const resultsDir = this.config.resultsDir || join(this.config.pipelineDir, '.pipeline-run');
+    await mkdir(resultsDir, { recursive: true });
+    await writeFile(
+      join(resultsDir, `${blueprint.task_id}.blueprint.json`),
+      JSON.stringify(blueprint, null, 2),
+    );
+
+    logger.info('Legacy task submitted to pipeline', {
+      legacyId,
+      pipelineTaskId: blueprint.task_id,
+      type: blueprint.task.type,
+      tier: blueprint.metadata.tier,
+    });
+
+    await logAuditEntry('LEGACY_TASK_SUBMITTED', {
+      legacyId,
+      pipelineTaskId: blueprint.task_id,
+      description: legacyTask.description?.slice(0, 200),
+    }, blueprint.task_id);
+
+    // Dispatch asynchronously — don't block the caller
+    this.dispatchAsync(tracked);
+
+    return { legacyId, pipelineTaskId: blueprint.task_id };
+  }
+
+  /**
+   * Get the current status of a tracked task.
+   */
+  getStatus(legacyId: string): TrackedTask | null {
+    return this.tasks.get(legacyId) || null;
+  }
+
+  /**
+   * List all tracked tasks.
+   */
+  listTasks(): TrackedTask[] {
+    return Array.from(this.tasks.values());
+  }
+
+  /**
+   * Get counts by status.
+   */
+  getCounts(): Record<AdapterTaskStatus, number> {
+    const counts: Record<AdapterTaskStatus, number> = {
+      submitted: 0,
+      dispatching: 0,
+      running: 0,
+      completed: 0,
+      failed: 0,
+      dead_letter: 0,
+    };
+    for (const task of this.tasks.values()) {
+      counts[task.status]++;
+    }
+    return counts;
+  }
+
+  // ─── Internal ─────────────────────────────────────────────────
+
+  private async dispatchAsync(tracked: TrackedTask): Promise<void> {
+    try {
+      this.updateStatus(tracked, 'dispatching');
+      this.updateStatus(tracked, 'running');
+
+      const result = await this.orchestrator.dispatchTask(tracked.blueprint);
+
+      tracked.result = result;
+      tracked.completedAt = new Date().toISOString();
+
+      if (result.deadLettered) {
+        this.updateStatus(tracked, 'dead_letter');
+      } else if (result.status === 'PASS') {
+        this.updateStatus(tracked, 'completed');
+      } else {
+        this.updateStatus(tracked, 'failed');
+      }
+
+      // Save result to disk
+      const resultsDir = this.config.resultsDir || join(this.config.pipelineDir, '.pipeline-run');
+      await writeFile(
+        join(resultsDir, `${tracked.pipelineTaskId}.result.json`),
+        JSON.stringify({ tracked, result }, null, 2),
+      );
+
+      await logAuditEntry('LEGACY_TASK_COMPLETE', {
+        legacyId: tracked.legacyId,
+        pipelineTaskId: tracked.pipelineTaskId,
+        status: tracked.status,
+        hops: result.totalHops,
+      }, tracked.pipelineTaskId);
+
+      logger.info('Legacy task completed', {
+        legacyId: tracked.legacyId,
+        status: tracked.status,
+        hops: result.totalHops,
+      });
+    } catch (err) {
+      tracked.error = String(err);
+      tracked.completedAt = new Date().toISOString();
+      this.updateStatus(tracked, 'failed');
+
+      logger.error('Legacy task dispatch failed', {
+        legacyId: tracked.legacyId,
+        error: String(err),
+      });
+    }
+  }
+
+  private updateStatus(tracked: TrackedTask, status: AdapterTaskStatus): void {
+    tracked.status = status;
+    this.config.onStatusChange?.(tracked.legacyId, status, tracked.result);
+  }
 }
