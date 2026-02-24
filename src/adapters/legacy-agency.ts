@@ -16,6 +16,7 @@ import { GeminiOrchestrator } from '../orchestrator/index.js';
 import type { LoopResult } from '../orchestrator/loop-driver.js';
 import { logAuditEntry } from '../audit/index.js';
 import { logger } from '../utils/logger.js';
+import { getMonitor } from '../monitoring/index.js';
 import type { TaskBlueprint, TaskType, PromptMode, Priority, Tier } from '../types/index.js';
 
 export interface LegacyAgencyTask {
@@ -316,10 +317,22 @@ export class PipelineAdapter {
 
       if (result.deadLettered) {
         this.updateStatus(tracked, 'dead_letter');
+        await getMonitor().recordError(
+          'dead-letter', 'dead_letter',
+          `Task dead-lettered after ${result.totalHops} hops`,
+          tracked.pipelineTaskId,
+          { legacyId: tracked.legacyId, hops: result.totalHops },
+        );
       } else if (result.status === 'PASS') {
         this.updateStatus(tracked, 'completed');
       } else {
         this.updateStatus(tracked, 'failed');
+        await getMonitor().recordError(
+          'adapter', 'task_failure',
+          `Task completed with status ${result.status}`,
+          tracked.pipelineTaskId,
+          { legacyId: tracked.legacyId, status: result.status, hops: result.totalHops },
+        );
       }
 
       // Save result to disk
@@ -350,6 +363,13 @@ export class PipelineAdapter {
         legacyId: tracked.legacyId,
         error: String(err),
       });
+
+      await getMonitor().recordError(
+        'adapter', 'task_failure',
+        `Dispatch exception: ${String(err).slice(0, 200)}`,
+        tracked.pipelineTaskId,
+        { legacyId: tracked.legacyId },
+      );
     }
   }
 
