@@ -4,7 +4,7 @@ import { homedir } from 'node:os';
 import { execSync, spawn } from 'node:child_process';
 import type { TaskBlueprint, TaskEnvelope, LoopAction, ClaudeOutput } from '../types/index.js';
 import { AntiLoopEngine } from '../anti-loop/index.js';
-import { FlashLiteVerifier } from '../verifier/index.js';
+import { GeminiVerifier } from '../verifier/index.js';
 import { classifyTask } from '../orchestrator/classifier.js';
 import { formatPromptForMode } from '../orchestrator/prompt-formatter.js';
 import { logAuditEntry } from '../audit/index.js';
@@ -57,12 +57,12 @@ export interface OpenClawBridgeConfig {
 export class OpenClawBridge {
   private config: OpenClawBridgeConfig;
   private antiLoop: AntiLoopEngine;
-  private verifier: FlashLiteVerifier;
+  private verifier: GeminiVerifier;
 
   constructor(config: OpenClawBridgeConfig) {
     this.config = config;
     this.antiLoop = new AntiLoopEngine();
-    this.verifier = new FlashLiteVerifier(config.geminiApiKey);
+    this.verifier = new GeminiVerifier(config.geminiApiKey);
   }
 
   /**
@@ -157,7 +157,7 @@ export class OpenClawBridge {
    * 2. Classify task type + select mode
    * 3. Format prompt with injected KB context
    * 4. Spawn Claude Code (via OpenClaw coding-agent or direct CLI)
-   * 5. Verify output via Flash-Lite
+   * 5. Verify output via Gemini
    * 6. Anti-loop check (TTL, hysteresis, backflow)
    * 7. Retry or return
    */

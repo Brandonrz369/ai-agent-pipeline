@@ -48,12 +48,12 @@ servers:
       - gemini-deep-research    # Deep research via Gemini API
 
   gemini-cache:
-    description: "Brain-damage-prevention context cache. Offloads long-session context from Claude Code to Gemini Flash-Lite for compression and retrieval."
+    description: "Brain-damage-prevention context cache. Offloads long-session context from Claude Code to Gemini 3.1 Pro for compression and retrieval."
     command: "node"
     args: ["src/mcp-servers/brain-context/index.js"]
     env:
       GEMINI_API_KEY: "${GEMINI_API_KEY}"
-      GEMINI_MODEL: "gemini-2.5-flash-lite"
+      GEMINI_MODEL: "gemini-3.1-pro-high"
       MAX_SUMMARY_TOKENS: "200"
     available_to: ["worker", "supervisor"]
     tools:

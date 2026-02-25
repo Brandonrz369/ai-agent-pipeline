@@ -1,22 +1,26 @@
 #!/bin/bash
-# NEXUS — OpenClaw Pipeline Driver
+# NEXUS — OpenClaw Pipeline Driver (Inverted Brainstorm Architecture)
 #
-# The autonomous orchestrator that drives the AI Agent Pipeline.
-# NEXUS reads state, routes decisions, and spawns agent sessions.
+# NEXUS is the autonomous body — OpenClaw + Gemini 3.1 Pro.
+# Claude Code is the brain — called via inverted brainstorm.
+#
+# Flow:
+#   Step 1: Read ALL state files (no truncation)
+#   Step 2: Compress state via Gemini into a focused question
+#   Step 3: Call claude -p with compressed context (no token limit)
+#   Step 4: Claude thinks strategically, returns actions[]
+#   Step 5: NEXUS executes every action
 #
 # Agent Hierarchy:
-#   NEXUS   = OpenClaw + Gemini 3.1 Pro (this script) — traffic cop
-#   ORACLE  = Claude Code brain session — strategic decisions
-#   ALPHA   = Claude Code supervisor — reviews, unblocks, also works
-#   BRAVO   = Claude Code builder 1 — execution path
-#   CHARLIE = Claude Code builder 2 — verification path
+#   NEXUS   = OpenClaw + Gemini 3.1 Pro (this script) — the body
+#   ALPHA   = Claude Code supervisor + worker (persistent tmux)
+#   BRAVO   = Claude Code builder 1 (spawned per-task)
+#   CHARLIE = Claude Code builder 2 (spawned per-task)
 #
 # Fallback chain:
-#   1. ORACLE (Claude Code brain)     → best decisions, costs tokens
-#   2. Gemini 3.1 Pro (Antigravity)   → free, good decisions
-#   3. Hardcoded fallback              → generic prompts, always works
-#
-# When Claude tokens are exhausted → notify user on Discord via Gemini
+#   1. Inverted brainstorm (Claude thinks, NEXUS executes)
+#   2. Gemini decides alone (same actions[] format)
+#   3. Hardcoded fallback (spawn idle agents with IDENTITY.md prompts)
 
 set -euo pipefail
 
@@ -27,6 +31,8 @@ LOCK_FILE="/tmp/pipeline-driver.lock"
 LOG_FILE="$HOME/.openclaw/logs/pipeline-driver.log"
 TMP_DIR="/tmp/pipeline-driver"
 MCP_CONFIG="$PIPELINE_DIR/config/mcp-servers.json"
+DECISION_SCHEMA="$PIPELINE_DIR/templates/decision-schema.json"
+CDP_PORT=18800
 
 # Prevent concurrent runs
 if [ -f "$LOCK_FILE" ]; then
@@ -45,9 +51,11 @@ log() {
   echo "$(date -Iseconds) NEXUS: $1" | tee -a "$LOG_FILE"
 }
 
-log "=== NEXUS Pipeline Driver Run ==="
+log "=== NEXUS Pipeline Driver Run (Inverted Brainstorm) ==="
 
-# ─── Step 1: Read state ──────────────────────────────────────────────
+# ─── Step 1: Read ALL state (no truncation) ──────────────────────────
+log "Reading full system state..."
+
 ALPHA_RUNNING=$(tmux has-session -t "alpha-supervisor" 2>/dev/null && echo "yes" || echo "no")
 BRAVO_RUNNING=$(tmux has-session -t "bravo-work" 2>/dev/null && echo "yes" || echo "no")
 CHARLIE_RUNNING=$(tmux has-session -t "charlie-work" 2>/dev/null && echo "yes" || echo "no")
@@ -61,134 +69,213 @@ if [ "$ALPHA_RUNNING" = "yes" ] && [ "$BRAVO_RUNNING" = "yes" ] && [ "$CHARLIE_R
   exit 0
 fi
 
-# ─── Step 2: Build context ───────────────────────────────────────────
-# Write context to temp files to avoid heredoc/quoting issues
-python3 -c "
-import json
+# Build full state file — no truncation, let Gemini handle compression
+{
+  echo "=== SYSTEM STATE ($(date -Iseconds)) ==="
+  echo ""
+  echo "--- TMUX SESSIONS ---"
+  echo "ALPHA (alpha-supervisor): $ALPHA_RUNNING"
+  echo "BRAVO (bravo-work): $BRAVO_RUNNING"
+  echo "CHARLIE (charlie-work): $CHARLIE_RUNNING"
+  echo ""
 
-def read_file(path, fallback='UNKNOWN', max_chars=800):
-    try:
-        with open(path) as f:
-            return f.read()[:max_chars]
-    except:
-        return fallback
+  echo "--- TASKBOARD.md ---"
+  cat "$COLLAB_DIR/shared/TASKBOARD.md" 2>/dev/null || echo "TASKBOARD not found"
+  echo ""
 
-collab = '/home/brans/ai-agent-pipeline/.collab'
-ctx = {
-    'taskboard': read_file(f'{collab}/shared/TASKBOARD.md', 'No taskboard', 1500),
-    'alpha_status': read_file(f'{collab}/alpha/STATUS.md', 'UNKNOWN', 400),
-    'bravo_status': read_file(f'{collab}/bravo/STATUS.md', 'UNKNOWN', 400),
-    'charlie_status': read_file(f'{collab}/charlie/STATUS.md', 'UNKNOWN', 400),
-}
+  echo "--- ALPHA STATUS ---"
+  cat "$COLLAB_DIR/alpha/STATUS.md" 2>/dev/null || echo "No status file"
+  echo ""
 
-# Extract just OPEN tasks for a cleaner prompt
-lines = ctx['taskboard'].split('\n')
-open_lines = []
-for line in lines:
-    if 'OPEN' in line or 'WORKING' in line:
-        open_lines.append(line.strip())
+  echo "--- BRAVO STATUS ---"
+  cat "$COLLAB_DIR/bravo/STATUS.md" 2>/dev/null || echo "No status file"
+  echo ""
 
-with open('/tmp/pipeline-driver/context.json', 'w') as f:
-    json.dump(ctx, f)
-with open('/tmp/pipeline-driver/open-tasks.txt', 'w') as f:
-    f.write('\n'.join(open_lines) if open_lines else 'No OPEN tasks found')
-with open('/tmp/pipeline-driver/alpha-status.txt', 'w') as f:
-    f.write(ctx['alpha_status'][:200])
-with open('/tmp/pipeline-driver/bravo-status.txt', 'w') as f:
-    f.write(ctx['bravo_status'][:200])
-with open('/tmp/pipeline-driver/charlie-status.txt', 'w') as f:
-    f.write(ctx['charlie_status'][:200])
-"
+  echo "--- CHARLIE STATUS ---"
+  cat "$COLLAB_DIR/charlie/STATUS.md" 2>/dev/null || echo "No status file"
+  echo ""
 
-OPEN_TASKS=$(cat "$TMP_DIR/open-tasks.txt")
-ALPHA_STATUS_TEXT=$(cat "$TMP_DIR/alpha-status.txt")
-BRAVO_STATUS_TEXT=$(cat "$TMP_DIR/bravo-status.txt")
-CHARLIE_STATUS_TEXT=$(cat "$TMP_DIR/charlie-status.txt")
+  echo "--- MESSAGES.md (last 50 lines) ---"
+  tail -50 "$COLLAB_DIR/shared/MESSAGES.md" 2>/dev/null || echo "No messages"
+  echo ""
 
-# Write the ORACLE decision prompt to a file (avoids shell escaping nightmares)
-cat > "$TMP_DIR/brain-prompt.txt" << 'PROMPT_END'
-You are ORACLE, the strategic brain for the AI Agent Pipeline. Read .collab/oracle/IDENTITY.md for your full instructions. Your job is to decide which agents to spawn and what tasks to give them.
+  echo "--- ARCHITECTURE-SUMMARY.md ---"
+  cat "$COLLAB_DIR/shared/ARCHITECTURE-SUMMARY.md" 2>/dev/null || echo "No summary"
+  echo ""
 
-AGENT STATUS:
-PROMPT_END
+  echo "--- GIT STATUS ---"
+  cd "$PIPELINE_DIR" && git status --short 2>/dev/null || echo "Not a git repo or git unavailable"
+  echo ""
 
-# Append dynamic state (using printf to avoid heredoc issues)
-printf -- "- ALPHA (supervisor) tmux session running: %s | Status: %s\n" "$ALPHA_RUNNING" "$ALPHA_STATUS_TEXT" >> "$TMP_DIR/brain-prompt.txt"
-printf -- "- BRAVO (builder 1) tmux session running: %s | Status: %s\n" "$BRAVO_RUNNING" "$BRAVO_STATUS_TEXT" >> "$TMP_DIR/brain-prompt.txt"
-printf -- "- CHARLIE (builder 2) tmux session running: %s | Status: %s\n" "$CHARLIE_RUNNING" "$CHARLIE_STATUS_TEXT" >> "$TMP_DIR/brain-prompt.txt"
+  echo "--- GIT LOG (last 5) ---"
+  cd "$PIPELINE_DIR" && git log --oneline -5 2>/dev/null || echo "No git log"
+  echo ""
 
-cat >> "$TMP_DIR/brain-prompt.txt" << 'PROMPT_END'
+  echo "--- BROWSER STATUS (CDP port $CDP_PORT) ---"
+  curl -s --connect-timeout 2 "http://localhost:$CDP_PORT/json/version" 2>/dev/null || echo "Browser not available"
+  echo ""
 
-OPEN/WORKING TASKS FROM TASKBOARD:
-PROMPT_END
+  echo "--- PIPELINE DRIVER STATE ---"
+  cat "$STATE_FILE" 2>/dev/null || echo "No prior state"
+  echo ""
+} > "$TMP_DIR/full-state.txt"
 
-echo "$OPEN_TASKS" >> "$TMP_DIR/brain-prompt.txt"
+STATE_SIZE=$(wc -c < "$TMP_DIR/full-state.txt")
+log "Full state collected: ${STATE_SIZE} bytes"
 
-cat >> "$TMP_DIR/brain-prompt.txt" << 'PROMPT_END'
+# ─── Step 2: Compress state via Gemini ───────────────────────────────
+log "Compressing state via Gemini..."
 
-RULES:
-1. If tmux=no, the agent needs to be respawned with a specific task
-2. If tmux=yes, leave the agent alone (do NOT spawn)
-3. ALPHA should ALWAYS be running — if tmux=no, always spawn ALPHA
-4. ALPHA's prompt must start with: "Read .collab/alpha/IDENTITY.md first."
-5. BRAVO's prompt must start with: "Read .collab/bravo/IDENTITY.md first."
-6. CHARLIE's prompt must start with: "Read .collab/charlie/IDENTITY.md first."
-7. Pick the first OPEN task assigned to that agent from the TASKBOARD
-8. Be VERY specific in prompts: tell the agent exactly which files to read/create, give step-by-step instructions
-9. Tell BRAVO and CHARLIE to EXIT when done. Tell ALPHA to stand by after supervision.
+BRAINSTORM_PROMPT=""
+BRAINSTORM_PROMPT=$(python3 "$PIPELINE_DIR/scripts/gemini-compress.py" compress "$TMP_DIR/full-state.txt" 2>/dev/null || echo "")
 
-Reply with ONLY a JSON object. Do NOT wrap in markdown code fences. No backticks. No explanation.
-{"spawn_alpha": true/false, "alpha_prompt": "exact prompt text", "spawn_bravo": true/false, "bravo_prompt": "exact prompt text", "spawn_charlie": true/false, "charlie_prompt": "exact prompt text", "reasoning": "brief"}
-PROMPT_END
+if [ -z "$BRAINSTORM_PROMPT" ]; then
+  log "WARN: Gemini compression failed, building manual prompt"
+  # Manual fallback prompt
+  BRAINSTORM_PROMPT=$(cat << MANUAL_END
+You are the strategic brain for the AI Agent Pipeline. Decide what actions NEXUS should execute.
 
-DECISION_PROMPT=$(cat "$TMP_DIR/brain-prompt.txt")
+Current state:
+- ALPHA (supervisor) tmux: $ALPHA_RUNNING
+- BRAVO (builder 1) tmux: $BRAVO_RUNNING
+- CHARLIE (builder 2) tmux: $CHARLIE_RUNNING
 
-# ─── Step 3: Try ORACLE (Claude Code brain) first ────────────────────
+$(cat "$TMP_DIR/full-state.txt" | head -100)
+
+Return a JSON object with an 'actions' array and 'reasoning' string. Each action has a 'type' field.
+See templates/decision-schema.json for the schema. Action types: spawn_tmux, shell_command, browser_navigate, browser_screenshot, message, write_file, noop.
+
+Rules:
+1. If tmux=no, spawn the agent. If tmux=yes, leave it alone.
+2. ALPHA should ALWAYS be running.
+3. Prompts must start with: "Read .collab/{agent}/IDENTITY.md first."
+4. Be VERY specific: exact file paths, step-by-step instructions.
+5. Tell BRAVO and CHARLIE to EXIT when done. ALPHA stands by.
+MANUAL_END
+)
+fi
+
+log "Brainstorm prompt ready ($(echo "$BRAINSTORM_PROMPT" | wc -c) bytes)"
+
+# ─── Step 3: Inverted brainstorm — Claude thinks ────────────────────
 DECISION=""
 TOKENS_EXHAUSTED="false"
 
-log "Consulting ORACLE (Claude Code brain)..."
-timeout 180 env -u CLAUDECODE claude -p "$DECISION_PROMPT" --output-format json > "$TMP_DIR/brain-raw.json" 2>"$TMP_DIR/brain-stderr.txt" || true
+log "Brainstorming with Claude..."
+
+# Write brainstorm prompt to file to avoid shell escaping issues
+cat > "$TMP_DIR/brainstorm-prompt.txt" << 'SCHEMA_HEADER'
+You are the strategic brain for the AI Agent Pipeline. NEXUS (the body) has compressed the current system state and is asking you to think strategically about what to do next.
+
+Read the situation below, think deeply, then return a JSON decision object.
+
+DECISION FORMAT (actions[] — see templates/decision-schema.json):
+{
+  "reasoning": "brief strategic explanation",
+  "actions": [
+    {"type": "spawn_tmux", "session_name": "alpha-supervisor", "agent": "alpha", "prompt": "Read .collab/alpha/IDENTITY.md first. Then..."},
+    {"type": "spawn_tmux", "session_name": "bravo-work", "agent": "bravo", "prompt": "Read .collab/bravo/IDENTITY.md first. Then..."},
+    {"type": "shell_command", "command": "...", "timeout": 30},
+    {"type": "message", "channel": "discord", "text": "..."},
+    {"type": "noop", "reason": "..."}
+  ]
+}
+
+ACTION TYPES:
+- spawn_tmux: Spawn a Claude Code session in tmux. Required: session_name, prompt. Optional: agent.
+- shell_command: Run a shell command. Required: command. Optional: timeout, cwd.
+- browser_navigate: Navigate browser. Required: url.
+- browser_screenshot: Screenshot browser. Required: output_path.
+- browser_click: Click element. Required: selector.
+- message: Send notification. Required: channel (discord|telegram|messages_md), text.
+- write_file: Write content to file. Required: path, content.
+- noop: No action needed. Required: reason.
+
+RULES:
+1. If an agent's tmux=no, spawn it. If tmux=yes, leave it alone.
+2. ALPHA should ALWAYS be running — if tmux=no, always include a spawn_tmux for alpha-supervisor.
+3. All spawn_tmux prompts MUST start with: "Read .collab/{agent}/IDENTITY.md first."
+4. Be SPECIFIC in prompts: exact file paths, step-by-step instructions, expected outcomes.
+5. BRAVO and CHARLIE should EXIT when done. ALPHA stands by after supervision.
+6. Working directory for all agents: /home/brans/ai-agent-pipeline
+
+Think freely, then output ONLY the JSON decision object at the end. No markdown fences around the JSON.
+
+--- SITUATION FROM NEXUS ---
+
+SCHEMA_HEADER
+
+echo "$BRAINSTORM_PROMPT" >> "$TMP_DIR/brainstorm-prompt.txt"
+
+# Call Claude with 10 minute timeout, no --output-format json restriction
+timeout 600 env -u CLAUDECODE claude -p "$(cat "$TMP_DIR/brainstorm-prompt.txt")" > "$TMP_DIR/brain-raw.txt" 2>"$TMP_DIR/brain-stderr.txt" || true
 
 # Check for token exhaustion
-if grep -qi "out of extra usage\|rate limit\|quota exceeded\|tokens exhausted" "$TMP_DIR/brain-stderr.txt" "$TMP_DIR/brain-raw.json" 2>/dev/null; then
+if grep -qi "out of extra usage\|rate limit\|quota exceeded\|tokens exhausted" "$TMP_DIR/brain-stderr.txt" "$TMP_DIR/brain-raw.txt" 2>/dev/null; then
   TOKENS_EXHAUSTED="true"
   log "Claude Code tokens EXHAUSTED. Will use Gemini fallback."
 fi
 
-# Parse ORACLE output (using temp file — no heredoc quoting issues)
-if [ -s "$TMP_DIR/brain-raw.json" ] && [ "$TOKENS_EXHAUSTED" = "false" ]; then
-  DECISION=$(python3 "$PIPELINE_DIR/scripts/parse-brain-output.py" "$TMP_DIR/brain-raw.json" 2>/dev/null || echo "")
+# Parse Claude's response — extract actions[] JSON from free-form text
+if [ -s "$TMP_DIR/brain-raw.txt" ] && [ "$TOKENS_EXHAUSTED" = "false" ]; then
+  DECISION=$(python3 "$PIPELINE_DIR/scripts/parse-brain-output.py" "$TMP_DIR/brain-raw.txt" 2>/dev/null || echo "")
 fi
 
 if [ -n "$DECISION" ] && [ "$DECISION" != "" ]; then
-  log "ORACLE decision: $(echo "$DECISION" | head -c 400)"
+  ACTION_COUNT=$(echo "$DECISION" | python3 -c "import sys,json; print(len(json.loads(sys.stdin.read()).get('actions',[])))" 2>/dev/null || echo "0")
+  log "Brainstorm decision: $ACTION_COUNT actions — $(echo "$DECISION" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('reasoning','')[:200])" 2>/dev/null || echo "")"
 else
-  # ─── Fallback: Use Gemini 3.1 Pro via Antigravity (FREE) ───────────
-  log "ORACLE unavailable. NEXUS falling back to Gemini 3.1 Pro via Antigravity..."
+  # ─── Fallback 2: Gemini decides alone ────────────────────────────
+  log "Brainstorm unavailable. NEXUS falling back to Gemini 3.1 Pro..."
 
-  # Write Gemini prompt to file
-  DECISION=$(python3 "$PIPELINE_DIR/scripts/gemini-fallback.py" \
-    "$ALPHA_RUNNING" "$BRAVO_RUNNING" "$CHARLIE_RUNNING" "$TMP_DIR/open-tasks.txt" 2>/dev/null || echo "")
+  # Extract open tasks for Gemini
+  python3 -c "
+lines = open('$COLLAB_DIR/shared/TASKBOARD.md').read().split('\n')
+open_lines = [l.strip() for l in lines if 'OPEN' in l or 'WORKING' in l]
+with open('$TMP_DIR/open-tasks.txt', 'w') as f:
+    f.write('\n'.join(open_lines) if open_lines else 'No OPEN tasks found')
+" 2>/dev/null || echo "No OPEN tasks found" > "$TMP_DIR/open-tasks.txt"
+
+  DECISION=$(python3 "$PIPELINE_DIR/scripts/gemini-compress.py" \
+    decide "$ALPHA_RUNNING" "$BRAVO_RUNNING" "$CHARLIE_RUNNING" "$TMP_DIR/open-tasks.txt" 2>/dev/null || echo "")
 
   if [ -n "$DECISION" ] && [ "$DECISION" != "" ]; then
-    log "NEXUS Gemini fallback decision: $(echo "$DECISION" | head -c 400)"
+    log "Gemini fallback decision: $(echo "$DECISION" | head -c 400)"
   else
-    log "Both ORACLE and Gemini failed. NEXUS using hardcoded fallback."
+    # ─── Fallback 3: Hardcoded ─────────────────────────────────────
+    log "Both brainstorm and Gemini failed. NEXUS using hardcoded fallback."
     DECISION=$(python3 -c "
 import json
-d = {
-    'spawn_alpha': $([ "$ALPHA_RUNNING" = "no" ] && echo "True" || echo "False"),
-    'alpha_prompt': 'Read /home/brans/ai-agent-pipeline/.collab/alpha/IDENTITY.md first. Then check TASKBOARD.md. Supervise BRAVO and CHARLIE, review completed work, and work on any unassigned P1+ tasks yourself. Stand by after supervision.',
-    'spawn_bravo': $([ "$BRAVO_RUNNING" = "no" ] && echo "True" || echo "False"),
-    'bravo_prompt': 'Read /home/brans/ai-agent-pipeline/.collab/bravo/IDENTITY.md first. Then check TASKBOARD.md. Work on the first OPEN task assigned to you. Update .collab/bravo/STATUS.md when done. EXIT when finished.',
-    'spawn_charlie': $([ "$CHARLIE_RUNNING" = "no" ] && echo "True" || echo "False"),
-    'charlie_prompt': 'Read /home/brans/ai-agent-pipeline/.collab/charlie/IDENTITY.md first. Then check TASKBOARD.md. Work on the first OPEN task assigned to you. Update .collab/charlie/STATUS.md when done. EXIT when finished.',
+actions = []
+if '$ALPHA_RUNNING' == 'no':
+    actions.append({
+        'type': 'spawn_tmux',
+        'session_name': 'alpha-supervisor',
+        'agent': 'alpha',
+        'prompt': 'Read /home/brans/ai-agent-pipeline/.collab/alpha/IDENTITY.md first. Then check TASKBOARD.md. Supervise BRAVO and CHARLIE, review completed work, and work on any unassigned P1+ tasks yourself. Stand by after supervision.'
+    })
+if '$BRAVO_RUNNING' == 'no':
+    actions.append({
+        'type': 'spawn_tmux',
+        'session_name': 'bravo-work',
+        'agent': 'bravo',
+        'prompt': 'Read /home/brans/ai-agent-pipeline/.collab/bravo/IDENTITY.md first. Then check TASKBOARD.md. Work on the first OPEN task assigned to you. Update .collab/bravo/STATUS.md when done. EXIT when finished.'
+    })
+if '$CHARLIE_RUNNING' == 'no':
+    actions.append({
+        'type': 'spawn_tmux',
+        'session_name': 'charlie-work',
+        'agent': 'charlie',
+        'prompt': 'Read /home/brans/ai-agent-pipeline/.collab/charlie/IDENTITY.md first. Then check TASKBOARD.md. Work on the first OPEN task assigned to you. Update .collab/charlie/STATUS.md when done. EXIT when finished.'
+    })
+if not actions:
+    actions.append({'type': 'noop', 'reason': 'All agents running'})
+print(json.dumps({
+    'actions': actions,
     'reasoning': 'NEXUS hardcoded fallback — spawning idle agents with identity-file prompts'
-}
-print(json.dumps(d))
+}))
 ")
-    log "NEXUS hardcoded fallback: $(echo "$DECISION" | head -c 300)"
+    log "Hardcoded fallback: $(echo "$DECISION" | head -c 300)"
   fi
 fi
 
@@ -197,25 +284,13 @@ if [ "$TOKENS_EXHAUSTED" = "true" ]; then
   log "Sending Discord notification about token exhaustion..."
   python3 "$PIPELINE_DIR/scripts/discord-notify.py" \
     "Claude Code tokens exhausted" \
-    "NEXUS detected that Claude Code tokens are exhausted. Agents are being driven by Gemini 3.1 Pro (via Antigravity) with limited decision quality. Tokens should reset at midnight. Want me to: run deep research, cache files, or do other Gemini-powered work while we wait?" \
+    "NEXUS detected that Claude Code tokens are exhausted. Agents are being driven by Gemini 3.1 Pro (via Antigravity) with limited decision quality. Tokens should reset at midnight." \
     2>/dev/null || log "WARN: Discord notification failed"
 fi
 
-# ─── Step 5: Post to MESSAGES.md ─────────────────────────────────────
-TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%MZ")
-REASONING=$(echo "$DECISION" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('reasoning','Auto'))" 2>/dev/null || echo "Auto")
-
-{
-  echo ""
-  echo "[$TIMESTAMP] NEXUS→ALL: **Automated assignment**"
-  echo "- $REASONING"
-  echo "- ALPHA tmux: $ALPHA_RUNNING | BRAVO tmux: $BRAVO_RUNNING | CHARLIE tmux: $CHARLIE_RUNNING"
-} >> "$COLLAB_DIR/shared/MESSAGES.md"
-
-# ─── Step 6: SPAWN agent sessions ────────────────────────────────────
-SPAWN_ALPHA=$(echo "$DECISION" | python3 -c "import sys,json; v=json.loads(sys.stdin.read()).get('spawn_alpha',False); print('true' if v else 'false')" 2>/dev/null || echo "false")
-SPAWN_BRAVO=$(echo "$DECISION" | python3 -c "import sys,json; v=json.loads(sys.stdin.read()).get('spawn_bravo',False); print('true' if v else 'false')" 2>/dev/null || echo "false")
-SPAWN_CHARLIE=$(echo "$DECISION" | python3 -c "import sys,json; v=json.loads(sys.stdin.read()).get('spawn_charlie',False); print('true' if v else 'false')" 2>/dev/null || echo "false")
+# ─── Step 5: Execute actions ─────────────────────────────────────────
+ACTION_COUNT=$(echo "$DECISION" | python3 -c "import sys,json; print(len(json.loads(sys.stdin.read()).get('actions',[])))" 2>/dev/null || echo "0")
+log "Executing $ACTION_COUNT actions..."
 
 # MCP config flag for Gemini tools via Antigravity
 MCP_FLAG=""
@@ -223,55 +298,141 @@ if [ -f "$MCP_CONFIG" ]; then
   MCP_FLAG="--mcp-config $MCP_CONFIG"
 fi
 
-# ─── Spawn ALPHA (supervisor — persistent) ───────────────────────────
-if [ "$SPAWN_ALPHA" = "true" ]; then
-  echo "$DECISION" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('alpha_prompt','Read .collab/alpha/IDENTITY.md first. Then check TASKBOARD.md and supervise.'))" > "$TMP_DIR/alpha-prompt.txt" 2>/dev/null
+# Post decision to MESSAGES.md
+TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%MZ")
+REASONING=$(echo "$DECISION" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('reasoning','Auto'))" 2>/dev/null || echo "Auto")
 
-  log "NEXUS: Spawning ALPHA (supervisor)..."
-  tmux kill-session -t "alpha-supervisor" 2>/dev/null || true
-  tmux new-session -d -s "alpha-supervisor" \
-    "cd $PIPELINE_DIR && env -u CLAUDECODE claude -p \"\$(cat /tmp/pipeline-driver/alpha-prompt.txt)\" $MCP_FLAG --output-format json 2>&1 | tee -a $LOG_FILE; echo 'ALPHA SESSION ENDED at '\$(date) >> $LOG_FILE; sleep 10" 2>/dev/null \
-    && log "NEXUS: ALPHA STARTED (alpha-supervisor)" \
-    || log "WARN: ALPHA spawn failed"
-fi
+{
+  echo ""
+  echo "[$TIMESTAMP] NEXUS→ALL: **Automated assignment (inverted brainstorm)**"
+  echo "- $REASONING"
+  echo "- ALPHA tmux: $ALPHA_RUNNING | BRAVO tmux: $BRAVO_RUNNING | CHARLIE tmux: $CHARLIE_RUNNING"
+} >> "$COLLAB_DIR/shared/MESSAGES.md"
 
-# ─── Spawn BRAVO (builder 1 — execution path) ────────────────────────
-if [ "$SPAWN_BRAVO" = "true" ]; then
-  echo "$DECISION" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('bravo_prompt','Read .collab/bravo/IDENTITY.md first. Then check TASKBOARD.md.'))" > "$TMP_DIR/bravo-prompt.txt" 2>/dev/null
+# Process each action
+echo "$DECISION" | python3 -c "
+import sys, json
+decision = json.loads(sys.stdin.read())
+for i, action in enumerate(decision.get('actions', [])):
+    print(json.dumps(action))
+" 2>/dev/null | while IFS= read -r ACTION_JSON; do
+  ACTION_TYPE=$(echo "$ACTION_JSON" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('type','unknown'))" 2>/dev/null || echo "unknown")
 
-  log "NEXUS: Spawning BRAVO (builder 1)..."
-  tmux kill-session -t "bravo-work" 2>/dev/null || true
-  tmux new-session -d -s "bravo-work" \
-    "cd $PIPELINE_DIR && env -u CLAUDECODE claude -p \"\$(cat /tmp/pipeline-driver/bravo-prompt.txt)\" $MCP_FLAG --output-format json 2>&1 | tee -a $LOG_FILE; echo 'BRAVO SESSION ENDED at '\$(date) >> $LOG_FILE; sleep 10" 2>/dev/null \
-    && log "NEXUS: BRAVO STARTED (bravo-work)" \
-    || log "WARN: BRAVO spawn failed"
-fi
+  case "$ACTION_TYPE" in
 
-# ─── Spawn CHARLIE (builder 2 — verification path) ───────────────────
-if [ "$SPAWN_CHARLIE" = "true" ]; then
-  echo "$DECISION" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('charlie_prompt','Read .collab/charlie/IDENTITY.md first. Then check TASKBOARD.md.'))" > "$TMP_DIR/charlie-prompt.txt" 2>/dev/null
+    spawn_tmux)
+      SESSION_NAME=$(echo "$ACTION_JSON" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('session_name',''))" 2>/dev/null)
+      AGENT=$(echo "$ACTION_JSON" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('agent',''))" 2>/dev/null)
+      PROMPT=$(echo "$ACTION_JSON" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('prompt',''))" 2>/dev/null)
 
-  log "NEXUS: Spawning CHARLIE (builder 2)..."
-  tmux kill-session -t "charlie-work" 2>/dev/null || true
-  tmux new-session -d -s "charlie-work" \
-    "cd $PIPELINE_DIR && env -u CLAUDECODE claude -p \"\$(cat /tmp/pipeline-driver/charlie-prompt.txt)\" $MCP_FLAG --output-format json 2>&1 | tee -a $LOG_FILE; echo 'CHARLIE SESSION ENDED at '\$(date) >> $LOG_FILE; sleep 10" 2>/dev/null \
-    && log "NEXUS: CHARLIE STARTED (charlie-work)" \
-    || log "WARN: CHARLIE spawn failed"
-fi
+      if [ -z "$SESSION_NAME" ] || [ -z "$PROMPT" ]; then
+        log "WARN: spawn_tmux missing session_name or prompt, skipping"
+        continue
+      fi
 
-# ─── Step 7: Save state ──────────────────────────────────────────────
+      # Write prompt to file to avoid shell escaping
+      echo "$PROMPT" > "$TMP_DIR/${AGENT:-agent}-prompt.txt"
+
+      log "Spawning $SESSION_NAME ($AGENT)..."
+      tmux kill-session -t "$SESSION_NAME" 2>/dev/null || true
+      tmux new-session -d -s "$SESSION_NAME" \
+        "cd $PIPELINE_DIR && env -u CLAUDECODE claude -p \"\$(cat $TMP_DIR/${AGENT:-agent}-prompt.txt)\" $MCP_FLAG 2>&1 | tee -a $LOG_FILE; echo '${SESSION_NAME} SESSION ENDED at '\$(date) >> $LOG_FILE; sleep 10" 2>/dev/null \
+        && log "STARTED: $SESSION_NAME" \
+        || log "WARN: $SESSION_NAME spawn failed"
+      ;;
+
+    shell_command)
+      COMMAND=$(echo "$ACTION_JSON" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('command',''))" 2>/dev/null)
+      CMD_TIMEOUT=$(echo "$ACTION_JSON" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('timeout', 30))" 2>/dev/null)
+      CMD_CWD=$(echo "$ACTION_JSON" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('cwd','$PIPELINE_DIR'))" 2>/dev/null)
+
+      if [ -n "$COMMAND" ]; then
+        log "Running shell command: $(echo "$COMMAND" | head -c 100)..."
+        cd "$CMD_CWD" && timeout "${CMD_TIMEOUT}s" bash -c "$COMMAND" >> "$LOG_FILE" 2>&1 \
+          && log "Shell command succeeded" \
+          || log "WARN: Shell command failed or timed out"
+      fi
+      ;;
+
+    browser_navigate)
+      URL=$(echo "$ACTION_JSON" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('url',''))" 2>/dev/null)
+      if [ -n "$URL" ]; then
+        log "Browser navigate: $URL"
+        # CDP navigate via DevTools protocol
+        curl -s "http://localhost:$CDP_PORT/json/new?$URL" > /dev/null 2>&1 \
+          || log "WARN: Browser navigate failed (CDP port $CDP_PORT)"
+      fi
+      ;;
+
+    browser_screenshot)
+      OUTPUT_PATH=$(echo "$ACTION_JSON" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('output_path',''))" 2>/dev/null)
+      if [ -n "$OUTPUT_PATH" ]; then
+        log "Browser screenshot: $OUTPUT_PATH"
+        openclaw browser screenshot "$OUTPUT_PATH" 2>/dev/null \
+          || log "WARN: Browser screenshot failed"
+      fi
+      ;;
+
+    browser_click)
+      SELECTOR=$(echo "$ACTION_JSON" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('selector',''))" 2>/dev/null)
+      if [ -n "$SELECTOR" ]; then
+        log "Browser click: $SELECTOR"
+        # Would use CDP Runtime.evaluate to click — placeholder
+        log "WARN: browser_click not yet implemented via CDP"
+      fi
+      ;;
+
+    message)
+      CHANNEL=$(echo "$ACTION_JSON" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('channel',''))" 2>/dev/null)
+      MSG_TEXT=$(echo "$ACTION_JSON" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('text',''))" 2>/dev/null)
+
+      if [ "$CHANNEL" = "discord" ] || [ "$CHANNEL" = "telegram" ]; then
+        log "Sending $CHANNEL message: $(echo "$MSG_TEXT" | head -c 100)..."
+        python3 "$PIPELINE_DIR/scripts/discord-notify.py" "NEXUS" "$MSG_TEXT" 2>/dev/null \
+          || log "WARN: $CHANNEL message failed"
+      elif [ "$CHANNEL" = "messages_md" ]; then
+        echo "[$TIMESTAMP] NEXUS→ALL: $MSG_TEXT" >> "$COLLAB_DIR/shared/MESSAGES.md"
+        log "Posted to MESSAGES.md"
+      fi
+      ;;
+
+    write_file)
+      FILE_PATH=$(echo "$ACTION_JSON" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('path',''))" 2>/dev/null)
+      FILE_CONTENT=$(echo "$ACTION_JSON" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('content',''))" 2>/dev/null)
+
+      if [ -n "$FILE_PATH" ] && [ -n "$FILE_CONTENT" ]; then
+        log "Writing file: $FILE_PATH"
+        mkdir -p "$(dirname "$FILE_PATH")"
+        echo "$FILE_CONTENT" > "$FILE_PATH" \
+          && log "File written: $FILE_PATH" \
+          || log "WARN: Failed to write $FILE_PATH"
+      fi
+      ;;
+
+    noop)
+      REASON=$(echo "$ACTION_JSON" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('reason','No reason given'))" 2>/dev/null)
+      log "NOOP: $REASON"
+      ;;
+
+    *)
+      log "WARN: Unknown action type: $ACTION_TYPE"
+      ;;
+  esac
+done
+
+# ─── Step 6: Save state ──────────────────────────────────────────────
 python3 -c "
 import json
 from datetime import datetime
 state = {
     'last_run': datetime.now().isoformat(),
+    'architecture': 'inverted_brainstorm',
     'alpha_tmux': '$ALPHA_RUNNING',
     'bravo_tmux': '$BRAVO_RUNNING',
     'charlie_tmux': '$CHARLIE_RUNNING',
-    'spawn_alpha': '$SPAWN_ALPHA' == 'true',
-    'spawn_bravo': '$SPAWN_BRAVO' == 'true',
-    'spawn_charlie': '$SPAWN_CHARLIE' == 'true',
+    'actions_executed': $ACTION_COUNT,
     'tokens_exhausted': '$TOKENS_EXHAUSTED' == 'true',
+    'fallback_used': '$TOKENS_EXHAUSTED' == 'true' or '$DECISION' == '',
 }
 with open('$STATE_FILE', 'w') as f:
     json.dump(state, f, indent=2)

@@ -1,0 +1,169 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "NEXUS Decision Schema — Actions Format",
+  "description": "Decision output from the inverted brainstorm. Claude thinks strategically, returns actions for NEXUS to execute.",
+  "type": "object",
+  "required": ["actions", "reasoning"],
+  "properties": {
+    "reasoning": {
+      "type": "string",
+      "description": "Brief explanation of the strategic thinking behind these actions"
+    },
+    "actions": {
+      "type": "array",
+      "description": "Ordered list of actions for NEXUS to execute",
+      "items": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "spawn_tmux",
+              "browser_navigate",
+              "browser_screenshot",
+              "browser_click",
+              "shell_command",
+              "message",
+              "write_file",
+              "noop"
+            ]
+          }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "type": { "const": "spawn_tmux" } } },
+            "then": {
+              "required": ["type", "session_name", "prompt"],
+              "properties": {
+                "type": {},
+                "session_name": {
+                  "type": "string",
+                  "enum": ["alpha-supervisor", "bravo-work", "charlie-work"],
+                  "description": "tmux session name"
+                },
+                "prompt": {
+                  "type": "string",
+                  "description": "Full prompt for Claude Code — must start with 'Read .collab/{agent}/IDENTITY.md first.'"
+                },
+                "agent": {
+                  "type": "string",
+                  "enum": ["alpha", "bravo", "charlie"],
+                  "description": "Agent callsign"
+                }
+              }
+            }
+          },
+          {
+            "if": { "properties": { "type": { "const": "browser_navigate" } } },
+            "then": {
+              "required": ["type", "url"],
+              "properties": {
+                "type": {},
+                "url": {
+                  "type": "string",
+                  "description": "URL to navigate to via CDP"
+                }
+              }
+            }
+          },
+          {
+            "if": { "properties": { "type": { "const": "browser_screenshot" } } },
+            "then": {
+              "required": ["type", "output_path"],
+              "properties": {
+                "type": {},
+                "output_path": {
+                  "type": "string",
+                  "description": "Path to save screenshot"
+                }
+              }
+            }
+          },
+          {
+            "if": { "properties": { "type": { "const": "browser_click" } } },
+            "then": {
+              "required": ["type", "selector"],
+              "properties": {
+                "type": {},
+                "selector": {
+                  "type": "string",
+                  "description": "CSS selector to click"
+                }
+              }
+            }
+          },
+          {
+            "if": { "properties": { "type": { "const": "shell_command" } } },
+            "then": {
+              "required": ["type", "command"],
+              "properties": {
+                "type": {},
+                "command": {
+                  "type": "string",
+                  "description": "Shell command to execute"
+                },
+                "timeout": {
+                  "type": "integer",
+                  "default": 30,
+                  "description": "Timeout in seconds"
+                },
+                "cwd": {
+                  "type": "string",
+                  "description": "Working directory"
+                }
+              }
+            }
+          },
+          {
+            "if": { "properties": { "type": { "const": "message" } } },
+            "then": {
+              "required": ["type", "channel", "text"],
+              "properties": {
+                "type": {},
+                "channel": {
+                  "type": "string",
+                  "description": "Notification channel: discord, telegram, messages_md"
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Message text"
+                }
+              }
+            }
+          },
+          {
+            "if": { "properties": { "type": { "const": "write_file" } } },
+            "then": {
+              "required": ["type", "path", "content"],
+              "properties": {
+                "type": {},
+                "path": {
+                  "type": "string",
+                  "description": "Absolute path to write"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "File content"
+                }
+              }
+            }
+          },
+          {
+            "if": { "properties": { "type": { "const": "noop" } } },
+            "then": {
+              "required": ["type", "reason"],
+              "properties": {
+                "type": {},
+                "reason": {
+                  "type": "string",
+                  "description": "Why no action is needed"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

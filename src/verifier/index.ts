@@ -8,7 +8,7 @@ export interface VerificationResult {
   issues: string[];
 }
 
-export class FlashLiteVerifier {
+export class GeminiVerifier {
   private client: AntigravityClient;
 
   constructor(_apiKeyOrClient?: string | AntigravityClient, model = 'gemini-3.1-pro-high') {
@@ -93,3 +93,6 @@ Rules:
     return { verdict: 'RETRY', reasoning: text.slice(0, 200), issues: ['Could not parse verifier response'] };
   }
 }
+
+/** @deprecated Use GeminiVerifier instead */
+export const FlashLiteVerifier = GeminiVerifier;

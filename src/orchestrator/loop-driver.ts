@@ -8,7 +8,7 @@ import type {
 } from '../types/index.js';
 import { AntiLoopEngine } from '../anti-loop/index.js';
 import { ClaudeCodeExecutor } from '../executor/index.js';
-import { FlashLiteVerifier } from '../verifier/index.js';
+import { GeminiVerifier } from '../verifier/index.js';
 import { classifyTask, type ClassificationResult } from './classifier.js';
 import { formatPromptForMode } from './prompt-formatter.js';
 import { logger } from '../utils/logger.js';
@@ -46,7 +46,7 @@ export interface LoopHistoryEntry {
 export class CompletionLoopDriver {
   private antiLoop: AntiLoopEngine;
   private executor: ClaudeCodeExecutor;
-  private verifier: FlashLiteVerifier;
+  private verifier: GeminiVerifier;
   private config: LoopDriverConfig;
 
   constructor(config: LoopDriverConfig) {
@@ -61,7 +61,7 @@ export class CompletionLoopDriver {
       cwd: config.cwd,
     });
 
-    this.verifier = new FlashLiteVerifier(
+    this.verifier = new GeminiVerifier(
       undefined,
       config.verifierModel || 'gemini-3.1-pro-high',
     );
@@ -141,7 +141,7 @@ export class CompletionLoopDriver {
         timestamp: new Date().toISOString(),
       });
 
-      // VERIFY via Flash-Lite
+      // VERIFY via Gemini
       logger.info('Loop: VERIFY', { task_id: task.task_id, claudeStatus: output.status });
       const verification = await this.verifier.verify(task, output);
 

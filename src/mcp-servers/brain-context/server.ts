@@ -26,7 +26,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'store_context',
         description:
-          'Compress and store context to prevent brain damage from context overflow. Sends content to Gemini Flash-Lite for ~200 token compression.',
+          'Compress and store context to prevent brain damage from context overflow. Sends content to Gemini 3.1 Pro for ~200 token compression.',
         inputSchema: {
           type: 'object' as const,
           properties: {
