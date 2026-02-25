@@ -91,3 +91,13 @@ Desktop.ini
 # ===========================
 .collab/
 collab/
+
+# ===========================
+# Claude Code (agent config)
+# ===========================
+.claude/
+
+# ===========================
+# Workspace (test artifacts)
+# ===========================
+workspace/
