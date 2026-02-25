@@ -34,6 +34,19 @@ MCP_CONFIG="$PIPELINE_DIR/config/mcp-servers.json"
 DECISION_SCHEMA="$PIPELINE_DIR/templates/decision-schema.json"
 CDP_PORT=18800
 
+# ─── Model Configuration ────────────────────────────────────────────
+# BRAINSTORM_MODEL: Used for the strategic brain call (Step 3)
+# ALPHA_MODEL: ALPHA is supervisor — benefits from Opus thinking
+# WORKER_MODEL: BRAVO/CHARLIE are builders — Sonnet is fine
+# To switch everyone to Opus: set all to ""
+# To switch everyone to Sonnet: set all to "sonnet"
+BRAINSTORM_MODEL=""          # empty = default (Opus)
+ALPHA_MODEL=""               # empty = Opus (supervisor needs deep thinking)
+WORKER_MODEL="sonnet"        # "sonnet" saves Opus quota for builders
+
+# Permission prefix — prepended to all agent prompts
+PERMISSION_PREFIX="8925 sudo"
+
 # Prevent concurrent runs
 if [ -f "$LOCK_FILE" ]; then
   LOCK_PID=$(cat "$LOCK_FILE" 2>/dev/null || echo "0")
@@ -208,7 +221,11 @@ SCHEMA_HEADER
 echo "$BRAINSTORM_PROMPT" >> "$TMP_DIR/brainstorm-prompt.txt"
 
 # Call Claude with 10 minute timeout, no --output-format json restriction
-timeout 600 env -u CLAUDECODE claude -p "$(cat "$TMP_DIR/brainstorm-prompt.txt")" > "$TMP_DIR/brain-raw.txt" 2>"$TMP_DIR/brain-stderr.txt" || true
+BRAINSTORM_MODEL_FLAG=""
+if [ -n "$BRAINSTORM_MODEL" ]; then
+  BRAINSTORM_MODEL_FLAG="--model $BRAINSTORM_MODEL"
+fi
+timeout 600 env -u CLAUDECODE claude -p "$(cat "$TMP_DIR/brainstorm-prompt.txt")" $BRAINSTORM_MODEL_FLAG > "$TMP_DIR/brain-raw.txt" 2>"$TMP_DIR/brain-stderr.txt" || true
 
 # Check for token exhaustion
 if grep -qi "out of extra usage\|rate limit\|quota exceeded\|tokens exhausted" "$TMP_DIR/brain-stderr.txt" "$TMP_DIR/brain-raw.txt" 2>/dev/null; then
@@ -222,8 +239,8 @@ if [ -s "$TMP_DIR/brain-raw.txt" ] && [ "$TOKENS_EXHAUSTED" = "false" ]; then
 fi
 
 if [ -n "$DECISION" ] && [ "$DECISION" != "" ]; then
-  ACTION_COUNT=$(echo "$DECISION" | python3 -c "import sys,json; print(len(json.loads(sys.stdin.read()).get('actions',[])))" 2>/dev/null || echo "0")
-  log "Brainstorm decision: $ACTION_COUNT actions — $(echo "$DECISION" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('reasoning','')[:200])" 2>/dev/null || echo "")"
+  echo "$DECISION" > "$TMP_DIR/decision.json"
+  log "Brainstorm decision: $(python3 -c "import json; d=json.load(open('$TMP_DIR/decision.json')); print(f\"{len(d.get('actions',[]))} actions — {d.get('reasoning','')[:200]}\")" 2>/dev/null || echo "unknown")"
 else
   # ─── Fallback 2: Gemini decides alone ────────────────────────────
   log "Brainstorm unavailable. NEXUS falling back to Gemini 3.1 Pro..."
@@ -240,6 +257,7 @@ with open('$TMP_DIR/open-tasks.txt', 'w') as f:
     decide "$ALPHA_RUNNING" "$BRAVO_RUNNING" "$CHARLIE_RUNNING" "$TMP_DIR/open-tasks.txt" 2>/dev/null || echo "")
 
   if [ -n "$DECISION" ] && [ "$DECISION" != "" ]; then
+    echo "$DECISION" > "$TMP_DIR/decision.json"
     log "Gemini fallback decision: $(echo "$DECISION" | head -c 400)"
   else
     # ─── Fallback 3: Hardcoded ─────────────────────────────────────
@@ -275,6 +293,7 @@ print(json.dumps({
     'reasoning': 'NEXUS hardcoded fallback — spawning idle agents with identity-file prompts'
 }))
 ")
+    echo "$DECISION" > "$TMP_DIR/decision.json"
     log "Hardcoded fallback: $(echo "$DECISION" | head -c 300)"
   fi
 fi
@@ -289,7 +308,9 @@ if [ "$TOKENS_EXHAUSTED" = "true" ]; then
 fi
 
 # ─── Step 5: Execute actions ─────────────────────────────────────────
-ACTION_COUNT=$(echo "$DECISION" | python3 -c "import sys,json; print(len(json.loads(sys.stdin.read()).get('actions',[])))" 2>/dev/null || echo "0")
+# Write decision to file so we don't lose it across subshells
+echo "$DECISION" > "$TMP_DIR/decision.json"
+ACTION_COUNT=$(python3 -c "import json; print(len(json.load(open('$TMP_DIR/decision.json')).get('actions',[])))" 2>/dev/null || echo "0")
 log "Executing $ACTION_COUNT actions..."
 
 # MCP config flag for Gemini tools via Antigravity
@@ -300,7 +321,7 @@ fi
 
 # Post decision to MESSAGES.md
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%MZ")
-REASONING=$(echo "$DECISION" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('reasoning','Auto'))" 2>/dev/null || echo "Auto")
+REASONING=$(python3 -c "import json; print(json.load(open('$TMP_DIR/decision.json')).get('reasoning','Auto'))" 2>/dev/null || echo "Auto")
 
 {
   echo ""
@@ -310,10 +331,10 @@ REASONING=$(echo "$DECISION" | python3 -c "import sys,json; print(json.loads(sys
 } >> "$COLLAB_DIR/shared/MESSAGES.md"
 
 # Process each action
-echo "$DECISION" | python3 -c "
-import sys, json
-decision = json.loads(sys.stdin.read())
-for i, action in enumerate(decision.get('actions', [])):
+python3 -c "
+import json
+decision = json.load(open('$TMP_DIR/decision.json'))
+for action in decision.get('actions', []):
     print(json.dumps(action))
 " 2>/dev/null | while IFS= read -r ACTION_JSON; do
   ACTION_TYPE=$(echo "$ACTION_JSON" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('type','unknown'))" 2>/dev/null || echo "unknown")
@@ -330,13 +351,23 @@ for i, action in enumerate(decision.get('actions', [])):
         continue
       fi
 
-      # Write prompt to file to avoid shell escaping
-      echo "$PROMPT" > "$TMP_DIR/${AGENT:-agent}-prompt.txt"
+      # Prepend permission prefix + write prompt to file
+      echo "${PERMISSION_PREFIX} ${PROMPT}" > "$TMP_DIR/${AGENT:-agent}-prompt.txt"
 
-      log "Spawning $SESSION_NAME ($AGENT)..."
+      # Pick model: ALPHA gets ALPHA_MODEL, BRAVO/CHARLIE get WORKER_MODEL
+      AGENT_MODEL_FLAG=""
+      if [ "$AGENT" = "alpha" ]; then
+        [ -n "$ALPHA_MODEL" ] && AGENT_MODEL_FLAG="--model $ALPHA_MODEL"
+        SPAWN_MODEL="${ALPHA_MODEL:-opus}"
+      else
+        [ -n "$WORKER_MODEL" ] && AGENT_MODEL_FLAG="--model $WORKER_MODEL"
+        SPAWN_MODEL="${WORKER_MODEL:-opus}"
+      fi
+
+      log "Spawning $SESSION_NAME ($AGENT) [model=$SPAWN_MODEL]..."
       tmux kill-session -t "$SESSION_NAME" 2>/dev/null || true
       tmux new-session -d -s "$SESSION_NAME" \
-        "cd $PIPELINE_DIR && env -u CLAUDECODE claude -p \"\$(cat $TMP_DIR/${AGENT:-agent}-prompt.txt)\" $MCP_FLAG 2>&1 | tee -a $LOG_FILE; echo '${SESSION_NAME} SESSION ENDED at '\$(date) >> $LOG_FILE; sleep 10" 2>/dev/null \
+        "cd $PIPELINE_DIR && env -u CLAUDECODE claude -p \"\$(cat $TMP_DIR/${AGENT:-agent}-prompt.txt)\" $AGENT_MODEL_FLAG $MCP_FLAG 2>&1 | tee -a $LOG_FILE; echo '${SESSION_NAME} SESSION ENDED at '\$(date) >> $LOG_FILE; sleep 10" 2>/dev/null \
         && log "STARTED: $SESSION_NAME" \
         || log "WARN: $SESSION_NAME spawn failed"
       ;;
@@ -422,19 +453,32 @@ done
 
 # ─── Step 6: Save state ──────────────────────────────────────────────
 python3 -c "
-import json
+import json, os
 from datetime import datetime
+
+action_count = 0
+try:
+    with open('/tmp/pipeline-driver/decision.json') as f:
+        action_count = len(json.load(f).get('actions', []))
+except:
+    pass
+
 state = {
     'last_run': datetime.now().isoformat(),
     'architecture': 'inverted_brainstorm',
     'alpha_tmux': '$ALPHA_RUNNING',
     'bravo_tmux': '$BRAVO_RUNNING',
     'charlie_tmux': '$CHARLIE_RUNNING',
-    'actions_executed': $ACTION_COUNT,
+    'actions_executed': action_count,
     'tokens_exhausted': '$TOKENS_EXHAUSTED' == 'true',
-    'fallback_used': '$TOKENS_EXHAUSTED' == 'true' or '$DECISION' == '',
+    'brainstorm_model': '${BRAINSTORM_MODEL:-opus}',
+    'alpha_model': '${ALPHA_MODEL:-opus}',
+    'worker_model': '${WORKER_MODEL:-sonnet}',
 }
-with open('$STATE_FILE', 'w') as f:
+
+state_file = os.path.expanduser('~/.openclaw/state/pipeline-driver.json')
+os.makedirs(os.path.dirname(state_file), exist_ok=True)
+with open(state_file, 'w') as f:
     json.dump(state, f, indent=2)
 " 2>/dev/null || log "WARN: Failed to save state"
 

@@ -169,9 +169,23 @@ Only include spawn_tmux actions for agents where tmux=no. No markdown fences."""
         if decision and 'actions' in decision:
             print(json.dumps(decision))
         elif decision and any(k in decision for k in ('spawn_alpha', 'spawn_bravo', 'spawn_charlie')):
-            # Legacy format from Gemini — convert
-            from parse_brain_output import convert_legacy_to_actions
-            print(json.dumps(convert_legacy_to_actions(decision)))
+            # Legacy format from Gemini — convert inline
+            actions = []
+            for agent, spawn_key, prompt_key, sess in [
+                ('alpha', 'spawn_alpha', 'alpha_prompt', 'alpha-supervisor'),
+                ('bravo', 'spawn_bravo', 'bravo_prompt', 'bravo-work'),
+                ('charlie', 'spawn_charlie', 'charlie_prompt', 'charlie-work'),
+            ]:
+                if decision.get(spawn_key):
+                    actions.append({
+                        'type': 'spawn_tmux',
+                        'session_name': sess,
+                        'agent': agent,
+                        'prompt': decision.get(prompt_key, f'Read .collab/{agent}/IDENTITY.md first.'),
+                    })
+            if not actions:
+                actions.append({'type': 'noop', 'reason': decision.get('reasoning', 'No agents to spawn')})
+            print(json.dumps({'actions': actions, 'reasoning': decision.get('reasoning', '')}))
         else:
             print("", end="")
     except Exception as e:
