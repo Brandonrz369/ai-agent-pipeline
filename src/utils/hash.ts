@@ -2,11 +2,11 @@ import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-export function sha256(data: string | Buffer): string {
+function sha256(data: string | Buffer): string {
   return createHash('sha256').update(data).digest('hex');
 }
 
-export async function hashFile(filePath: string): Promise<string> {
+async function hashFile(filePath: string): Promise<string> {
   const content = await readFile(resolve(filePath));
   return sha256(content);
 }

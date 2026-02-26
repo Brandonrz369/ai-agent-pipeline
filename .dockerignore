@@ -1,0 +1,59 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+
+# Build output
+dist/
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# Version control
+.git/
+.gitignore
+
+# Test files
+src/**/__tests__/
+**/*.test.ts
+**/*.spec.ts
+coverage/
+
+# Agent collaboration state (ephemeral)
+.collab/
+collab/
+.claude/
+
+# Development artifacts
+workspace/
+reports/
+*.log
+logs/
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+*.secret
+credentials.json
+
+# OS and IDE artifacts
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Documentation (not needed at runtime)
+*.md
+docs/
+
+# Scripts (not needed in container)
+scripts/
+
+# Templates and prompts
+templates/
+prompts/
+
+# Security scans
+security/

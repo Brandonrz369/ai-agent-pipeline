@@ -25,4 +25,4 @@ clear():void{this.tasks.clear();}size():number{return this.tasks.size;}}
 
 let _defaultStore:TaskStore|null=null;
 export function getTaskStore():TaskStore{if(!_defaultStore){_defaultStore=new TaskStore();}return _defaultStore;}
-export function _resetTaskStore():void{_defaultStore=null;}
+

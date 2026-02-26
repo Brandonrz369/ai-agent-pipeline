@@ -1,14 +1,10 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
-import { homedir } from 'node:os';
 import { execSync, spawn } from 'node:child_process';
-import type { TaskBlueprint, TaskEnvelope, LoopAction, ClaudeOutput } from '../types/index.js';
+import type { TaskBlueprint, ClaudeOutput } from '../types/index.js';
 import { AntiLoopEngine } from '../anti-loop/index.js';
 import { GeminiVerifier } from '../verifier/index.js';
 import { classifyTask } from '../orchestrator/classifier.js';
 import { formatPromptForMode } from '../orchestrator/prompt-formatter.js';
 import { logAuditEntry } from '../audit/index.js';
-import { AntigravityClient } from '../utils/antigravity-client.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -28,22 +24,6 @@ import { logger } from '../utils/logger.js';
  * in Gemini caches, queryable via the gemini MCP skill.
  */
 
-const OPENCLAW_STATE_DIR = join(homedir(), '.openclaw', 'state');
-const OPENCLAW_WORKSPACE = join(homedir(), '.openclaw', 'workspace');
-const PIPELINE_STATE_FILE = join(OPENCLAW_STATE_DIR, 'pipeline-state.json');
-
-export interface PipelineState {
-  activeTasks: Map<string, TaskEnvelope>;
-  completedTasks: string[];
-  deadLettered: string[];
-  lastRun: string;
-  totalHops: number;
-  cacheNames: {
-    kb: string;
-    deliverables: string;
-    brainContext: string;
-  };
-}
 
 export interface OpenClawBridgeConfig {
   geminiApiKey: string;
@@ -263,19 +243,4 @@ export class OpenClawBridge {
     }
   }
 
-  /**
-   * Save pipeline state to OpenClaw's state directory so the watchdog
-   * and other sessions can see what's happening.
-   */
-  async savePipelineState(state: Record<string, unknown>): Promise<void> {
-    await mkdir(OPENCLAW_STATE_DIR, { recursive: true });
-    await writeFile(PIPELINE_STATE_FILE, JSON.stringify({
-      ...state,
-      updated_at: new Date().toISOString(),
-      cache_names: {
-        kb: this.config.cacheKbName || 'pipeline-kb',
-        deliverables: this.config.cacheDeliverablesName || 'pipeline-deliverables',
-      },
-    }, null, 2));
-  }
 }

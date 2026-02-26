@@ -1,0 +1,40 @@
+version: "3.9"
+
+services:
+  pipeline:
+    build:
+      context: .
+      target: production
+    image: ai-agent-pipeline:latest
+    container_name: pipeline
+
+    ports:
+      - "3847:3847"
+
+    environment:
+      - NODE_ENV=production
+      - ANTIGRAVITY_URL=${ANTIGRAVITY_URL:-http://host.docker.internal:8080}
+
+    env_file:
+      - .env
+
+    # Persistent storage for dead-letter queue
+    volumes:
+      - pipeline-data:/home/pipeline/.openclaw
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3847/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+
+    restart: unless-stopped
+
+    # Allow container to reach host services (e.g. Antigravity proxy)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  pipeline-data:
+    driver: local

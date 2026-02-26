@@ -45,6 +45,3 @@ export async function loadPipelineConfig(): Promise<PipelineConfig> {
   return _pipelineConfig;
 }
 
-export function resetConfigCache() {
-  _pipelineConfig = null;
-}
