@@ -229,3 +229,46 @@ export interface AuditEntry {
   details: Record<string, unknown>;
   hmac: string;
 }
+
+export type SuperviseStatus = 'PASS' | 'FAIL' | 'STUCK';
+
+export type ScreenshotActionType = 'screenshot' | 'click' | 'type' | 'scroll' | 'key' | 'move';
+
+export interface ScreenshotAction {
+  type: ScreenshotActionType;
+  x?: number;
+  y?: number;
+  text?: string;
+  key?: string;
+  scroll?: { direction: 'up' | 'down' | 'left' | 'right'; amount: number };
+  description: string;
+}
+
+export interface SuperviseResult {
+  task_id: string;
+  mode: 'SUPERVISE';
+  status: SuperviseStatus;
+  screenshots_taken: number;
+  actions_performed: number;
+  context_offloads: number;
+  summary: string;
+  issues: string[];
+  mcp_cache_key?: string;
+  duration_ms?: number;
+}
+
+export interface ComputerUseProvider {
+  screenshot(): Promise<{ data: string; mimeType: string }>;
+  moveMouse(x: number, y: number): Promise<void>;
+  click(x: number, y: number, button?: 'left' | 'right' | 'middle'): Promise<void>;
+  type(text: string): Promise<void>;
+  pressKey(key: string): Promise<void>;
+  scroll(x: number, y: number, direction: 'up' | 'down' | 'left' | 'right', amount: number): Promise<void>;
+}
+
+export interface SuperviseConfig {
+  maxActions: number;
+  contextOffloadEvery: number;
+  urlAllowlist: string[];
+  hitlApproved: boolean;
+}
