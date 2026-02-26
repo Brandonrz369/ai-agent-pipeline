@@ -1,6 +1,7 @@
 import { AntigravityClient } from '../utils/antigravity-client.js';
 import type { TaskBlueprint, ClaudeOutput, VerifierResult } from '../types/index.js';
 import { logger } from '../utils/logger.js';
+import { getMonitor } from '../monitoring/index.js';
 
 export interface VerificationResult {
   verdict: VerifierResult;
@@ -27,6 +28,7 @@ export class GeminiVerifier {
       return this.parseVerificationResponse(response.text);
     } catch (err) {
       logger.error('Verifier API call failed after retries', { error: String(err) });
+      void getMonitor().recordError('verifier','api_error','Verifier API call failed: '+String(err),task.task_id,{ taskId: task.task_id });
       // On verifier failure, conservatively return RETRY
       return {
         verdict: 'RETRY',
@@ -79,6 +81,7 @@ Rules:
         };
       } catch {
         // Parse failed
+        void getMonitor().recordError("verifier","parse_error","Verifier JSON parse failed, using heuristic fallback",undefined);
       }
     }
 

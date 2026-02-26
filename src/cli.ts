@@ -122,6 +122,16 @@ program
     await healthCommand(opts);
   });
 
+program
+  .command('escalation')
+  .description('Human escalation dashboard -- STUCK/ESCALATED/BLOCKED tasks')
+  .option('--json', 'Output as JSON')
+  .option('-w, --watch <interval>', 'Auto-refresh every N seconds')
+  .action(async (opts) => {
+    const { escalationCommand } = await import('./commands/escalation.js');
+    await escalationCommand(opts);
+  });
+
 const audit = program
   .command('audit')
   .description('Audit trail management');
@@ -143,5 +153,12 @@ audit
     const { auditVerifyCommand } = await import('./commands/audit.js');
     await auditVerifyCommand(opts);
   });
+
+// Wire ErrorMonitor to capture unhandled rejections from CLI commands
+process.on('unhandledRejection', (reason) => {
+  import('./monitoring/index.js').then(({ getMonitor }) => {
+    void getMonitor().recordError('api','api_error','CLI unhandled rejection: '+String(reason));
+  }).catch(() => {});
+});
 
 program.parse();

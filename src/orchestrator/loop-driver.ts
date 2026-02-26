@@ -12,6 +12,7 @@ import { GeminiVerifier } from '../verifier/index.js';
 import { classifyTask, type ClassificationResult } from './classifier.js';
 import { formatPromptForMode } from './prompt-formatter.js';
 import { logger } from '../utils/logger.js';
+import { getMonitor } from '../monitoring/index.js';
 
 export interface LoopDriverConfig {
   geminiApiKey: string;
@@ -103,6 +104,7 @@ export class CompletionLoopDriver {
       const preHop = this.antiLoop.preHopCheck(envelope);
       if (!preHop.allowed) {
         logger.warn('Loop: TTL expired', { task_id: task.task_id, reason: preHop.reason });
+        void getMonitor().recordError('orchestrator','ttl_exceeded','Task TTL expired after '+envelope.hops+' hops: '+preHop.reason,task.task_id,{ hops: envelope.hops, ttl_max: envelope.ttl_max });
         history.push({
           hop: envelope.hops,
           mode: envelope.mode,
@@ -141,6 +143,11 @@ export class CompletionLoopDriver {
         timestamp: new Date().toISOString(),
       });
 
+      // Record executor failure
+      if (!result.success) {
+        void getMonitor().recordError("executor","task_failure","Executor returned failure: "+(output.summary||"").slice(0,200),task.task_id,{ exitCode: result.exitCode, hop: envelope.hops });
+      }
+
       // VERIFY via Gemini
       logger.info('Loop: VERIFY', { task_id: task.task_id, claudeStatus: output.status });
       const verification = await this.verifier.verify(task, output);
@@ -152,6 +159,11 @@ export class CompletionLoopDriver {
         verifierResult: verification.verdict,
         timestamp: new Date().toISOString(),
       });
+
+      // Record ESCALATE verdict
+      if (verification.verdict === 'ESCALATE') {
+        void getMonitor().recordError('verifier','escalation','Verifier returned ESCALATE: '+verification.reasoning,task.task_id,{ issues: verification.issues, hop: envelope.hops });
+      }
 
       // If PASS, we're done
       if (verification.verdict === 'PASS') {
@@ -189,6 +201,7 @@ export class CompletionLoopDriver {
           task_id: task.task_id,
           reason: postHop.message,
         });
+        void getMonitor().recordError('dead-letter','dead_letter','Task dead-lettered: '+postHop.message,task.task_id,{ totalHops: envelope.hops, finalMode: postHop.envelope.mode });
         return {
           task_id: task.task_id,
           status: 'DEAD_LETTER',
