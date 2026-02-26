@@ -113,6 +113,15 @@ program
     await statusCommand();
   });
 
+program
+  .command('health')
+  .description('Check pipeline health status')
+  .option('--json', 'Output as JSON')
+  .action(async (opts) => {
+    const { healthCommand } = await import('./commands/health.js');
+    await healthCommand(opts);
+  });
+
 const audit = program
   .command('audit')
   .description('Audit trail management');

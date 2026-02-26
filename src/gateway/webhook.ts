@@ -2,11 +2,14 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { logger } from '../utils/logger.js';
 import { logAuditEntry } from '../audit/index.js';
 import { resolveApproval, listPendingApprovals } from '../security/discord-hitl.js';
+import { getHealthReport } from '../health/index.js';
+import { getTaskStore, type TaskStore } from '../adapters/task-store.js';
 
 export interface WebhookConfig {
   port: number;
   onTaskReceived?: (task: unknown) => Promise<void>;
   onHITLResponse?: (gateId: string, decision: string) => Promise<void>;
+  taskStore?: TaskStore;
 }
 
 function parseBody(req: IncomingMessage): Promise<string> {
@@ -24,13 +27,46 @@ function sendJson(res: ServerResponse, statusCode: number, data: unknown) {
 }
 
 export function createWebhookServer(config: WebhookConfig) {
+  const store = config.taskStore ?? getTaskStore();
+
   const server = createServer(async (req, res) => {
     const url = new URL(req.url || '/', `http://localhost:${config.port}`);
     const method = req.method || 'GET';
 
-    // Health check
+    // Enhanced health check — returns full health report
     if (url.pathname === '/health' && method === 'GET') {
-      sendJson(res, 200, { status: 'ok', timestamp: new Date().toISOString() });
+      try {
+        const report = await getHealthReport();
+        const statusCode = report.status === 'ok' ? 200 : 503;
+        sendJson(res, statusCode, report);
+      } catch (err) {
+        sendJson(res, 503, { status: 'down', error: String(err), timestamp: new Date().toISOString() });
+      }
+      return;
+    }
+
+    // GET /api/tasks — list tasks with pagination, filter, search
+    if (url.pathname === '/api/tasks' && method === 'GET') {
+      const result = store.list({
+        page: url.searchParams.get('page') ? Number(url.searchParams.get('page')) : undefined,
+        limit: url.searchParams.get('limit') ? Number(url.searchParams.get('limit')) : undefined,
+        status: url.searchParams.get('status') ?? undefined,
+        assigned: url.searchParams.get('assigned') ?? undefined,
+        q: url.searchParams.get('q') ?? undefined,
+      });
+      sendJson(res, 200, result);
+      return;
+    }
+
+    // GET /api/tasks/:id — single task by ID
+    const _pp = url.pathname.split('/').filter(Boolean);
+    if (_pp[0] === 'api' && _pp[1] === 'tasks' && _pp[2] && _pp.length === 3 && method === 'GET') {
+      const task = store.getById(_pp[2]);
+      if (!task) {
+        sendJson(res, 404, { error: 'Task not found' });
+      } else {
+        sendJson(res, 200, { data: task });
+      }
       return;
     }
 
@@ -55,10 +91,7 @@ export function createWebhookServer(config: WebhookConfig) {
         const body = JSON.parse(await parseBody(req));
         const { gate_id, decision, task_id } = body;
         await logAuditEntry('HITL_WEBHOOK_RESPONSE', { gate_id, decision, task_id });
-
-        // Resolve the pending Discord approval if one exists
         const resolved = resolveApproval(gate_id, decision, task_id);
-
         if (config.onHITLResponse) {
           await config.onHITLResponse(gate_id, decision);
         }
