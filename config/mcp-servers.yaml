@@ -65,11 +65,23 @@ servers:
       Target: keep Claude Code active context under ~50K tokens.
       Cache key format: {task_id}-{session_id}-{block_name}
 
+  pipeline-context:
+    description: "Pipeline Memory & RAG. Provides access to historical worker reports for project-wide context recall."
+    command: "npx"
+    args: ["tsx", "src/mcp-servers/pipeline-context/server.ts"]
+    env:
+      REPORTS_DIR: "/home/brans/ai-agent-pipeline/reports"
+    available_to: ["orchestrator", "worker", "supervisor"]
+    tools:
+      - list_reports
+      - search_reports
+      - get_report_details
+
 # ── Access Control Matrix ─────────────────────────────────────────
 # Cross-reference: security/rbac-config.md
 
 access_matrix:
-  orchestrator:   [filesystem, github, gemini]
-  worker:         [filesystem, bash, github, gemini, gemini-cache]
+  orchestrator:   [filesystem, github, gemini, pipeline-context]
+  worker:         [filesystem, bash, github, gemini, gemini-cache, pipeline-context]
   redteam:        [filesystem, gemini]
-  supervisor:     [filesystem, bash, gemini, gemini-cache]
+  supervisor:     [filesystem, bash, gemini, gemini-cache, pipeline-context]
