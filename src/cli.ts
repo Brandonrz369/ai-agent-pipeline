@@ -136,6 +136,16 @@ program
   });
 
 program
+  .command('benchmarks')
+  .description('Phase 7: Performance Benchmarking — analyze cluster latency and costs')
+  .option('--json', 'Output as raw JSON')
+  .addHelpText('after','\nExamples:\n  $ pipeline benchmarks\n  $ pipeline benchmarks --json')
+  .action(async (opts) => {
+    const { benchmarksCommand } = await import('./commands/benchmarks.js');
+    await benchmarksCommand(opts);
+  });
+
+program
   .command('health')
   .description('Check pipeline health status')
   .option('--json', 'Output as JSON')
