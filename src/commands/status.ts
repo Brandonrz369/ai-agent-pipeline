@@ -3,8 +3,10 @@ import { getStoreStats } from '../mcp-servers/brain-context/index.js';
 import { readAuditLog } from '../audit/index.js';
 import { getSummaryMetrics } from '../monitoring/metrics.js';
 import { WorkerRegistry } from '../orchestrator/registry.js';
+import { loadPipelineConfig } from '../config/loader.js';
 
 export async function statusCommand() {
+  const config = await loadPipelineConfig();
   console.log('=== AI Agent Pipeline Status ===\n');
 
   // Environment
@@ -38,7 +40,7 @@ export async function statusCommand() {
   console.log('');
 
   // Dead-letter queue
-  const deadLetterItems = await listDeadLetter();
+  const deadLetterItems = await listDeadLetter(config.dead_letter.path, config.dead_letter.backend);
   console.log(`Dead-letter queue: ${deadLetterItems.length} items`);
   if (deadLetterItems.length > 0) {
     deadLetterItems.slice(0, 3).forEach((item) => {
