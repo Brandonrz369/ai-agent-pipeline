@@ -2,7 +2,8 @@ import { AntigravityClient } from '../utils/antigravity-client.js';
 import type { TaskBlueprint } from '../types/index.js';
 import { CompletionLoopDriver, type LoopDriverConfig, type LoopResult } from './loop-driver.js';
 import { WorkerRegistry } from './registry.js';
-import { loadPipelineConfig } from '../config/loader.js';
+import { loadPipelineConfig, loadMcpConfig } from '../config/loader.js';
+import { verifyMcpIntegrity } from '../security/mcp-integrity.js';
 import { logger } from '../utils/logger.js';
 
 export interface OrchestratorConfig {
@@ -24,6 +25,28 @@ export class GeminiOrchestrator {
     
     // Auto-register local node for Phase 4 coordination
     void this.initLocalNode();
+    
+    // Security: Verify MCP integrity (T37)
+    void this.verifyClusterSecurity();
+  }
+
+  private async verifyClusterSecurity() {
+    try {
+      const mcpConfig = await loadMcpConfig();
+      const serverNames = Object.keys(mcpConfig.servers);
+      
+      logger.info('Security: Initiating MCP integrity sweep', { count: serverNames.length });
+      
+      for (const name of serverNames) {
+        const verified = await verifyMcpIntegrity(name);
+        if (!verified) {
+          logger.error('CRITICAL: Cluster security compromised. MCP server failed integrity check.', { serverName: name });
+          // In a high-security mode, we would halt the orchestrator here.
+        }
+      }
+    } catch (err) {
+      logger.error('Security: Failed to perform MCP integrity sweep', { error: String(err) });
+    }
   }
 
   private async initLocalNode() {
