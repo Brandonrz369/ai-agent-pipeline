@@ -14,6 +14,7 @@ import { formatPromptForMode } from './prompt-formatter.js';
 import { logger } from '../utils/logger.js';
 import { getMonitor } from '../monitoring/index.js';
 import { recordPerformanceMetric } from '../monitoring/metrics.js';
+import { enforcePermission } from '../security/rbac.js';
 
 export interface LoopDriverConfig {
   geminiApiKey: string;
@@ -145,6 +146,30 @@ export class CompletionLoopDriver {
 
       // Record performance metrics for T32
       void recordPerformanceMetric(envelope, output);
+
+      // RBAC Enforcement: Validate write scope (T39)
+      if (output.affected_files && output.affected_files.length > 0) {
+        for (const file of output.affected_files) {
+          try {
+            await enforcePermission(task.metadata.node, file, 'write', task.task_id);
+          } catch (err) {
+            const msg = `RBAC Violation: ${String(err)}`;
+            logger.error(msg, { task_id: task.task_id, file });
+            void getMonitor().recordError('security', 'rbac_violation', msg, task.task_id, { file }, envelope.trace_id);
+            
+            return {
+              task_id: task.task_id,
+              status: 'DEAD_LETTER',
+              totalHops: envelope.hops,
+              finalMode: envelope.mode,
+              output: { ...output, status: 'FAIL', summary: msg },
+              classification,
+              deadLettered: true,
+              history,
+            };
+          }
+        }
+      }
 
       history.push({
         hop: envelope.hops,

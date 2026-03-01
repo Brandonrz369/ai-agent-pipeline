@@ -1,6 +1,7 @@
 import { execSync } from 'node:child_process';
 import { logger } from './logger.js';
 import { getTaskStore } from '../adapters/task-store.js';
+import { requestApproval } from '../security/hitl.js';
 
 export interface PullRequestOptions {
   taskId: string;
@@ -24,17 +25,22 @@ export class GitHubWrapper {
     logger.info('GitHub: Initiating automated PR with Red Team review', { taskId: opts.taskId, branch: opts.branch });
 
     try {
+      // HITL Check: Verify 'git push' permission for this specific instance
+      const pushDecision = await requestApproval(`git push origin ${opts.branch}`, opts.taskId, { branch: opts.branch });
+      if (pushDecision !== 'APPROVE') {
+        throw new Error(`HITL: git push REJECTED for branch ${opts.branch}`);
+      }
+
       // 1. Ensure we are on the correct branch and it's pushed
-      // (Assuming the agent has already committed changes locally)
       execSync(`git push origin ${opts.branch}`, { stdio: 'pipe' });
 
-      // 2. Create the PR using the 'gh' CLI (most reliable for complex flows)
-      const base = opts.base || 'main';
-      const prResult = execSync(
-        `gh pr create --title "${opts.title}" --body "${opts.body}" --head "${opts.branch}" --base "${base}"`,
-        { encoding: 'utf-8' }
-      );
-      const prUrl = prResult.trim();
+      // HITL Check: Verify 'gh pr create' permission
+      const prDecision = await requestApproval(`gh pr create --title "${opts.title}"`, opts.taskId, { title: opts.title });
+      if (prDecision !== 'APPROVE') {
+        throw new Error(`HITL: PR creation REJECTED for ${opts.title}`);
+      }
+
+      // 2. Create the PR using the 'gh' CLI
 
       // 3. Queue the Red Team review task in our shared SQLite TaskStore
       const taskStore = getTaskStore();

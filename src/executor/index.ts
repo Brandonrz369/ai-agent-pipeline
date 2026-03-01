@@ -4,6 +4,7 @@ import { getModeConfig, getTemplatePath } from './modes.js';
 import { loadTemplate } from '../utils/template.js';
 import { logger } from '../utils/logger.js';
 import { runSuperviseSession, type SuperviseHandlerOptions } from './supervise.js';
+import { enforceToolPermission } from '../security/rbac.js';
 
 export interface ExecutorOptions {
   cwd?: string;
@@ -52,6 +53,12 @@ export class ClaudeCodeExecutor {
     ].join('\n');
   }
   async execute(task: TaskBlueprint, envelope: TaskEnvelope): Promise<{ result: SessionResult; output: ClaudeOutput }> {
+    // RBAC Enforcement: Verify tool permissions (T39)
+    const requiredTools = task.task.mcp_tools_required || [];
+    for (const tool of requiredTools) {
+      await enforceToolPermission(task.metadata.node, tool, task.task_id);
+    }
+
     if (envelope.mode === 'SUPERVISE') { return this.executeSupervise(task, envelope); }
     const prompt = await this.formatPrompt(task, envelope);
     logger.info('Executing task via Claude Code', { task_id: task.task_id, mode: envelope.mode, hop: envelope.hops });

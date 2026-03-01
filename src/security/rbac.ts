@@ -1,7 +1,8 @@
 import { logger } from '../utils/logger.js';
 import { logAuditEntry } from '../audit/index.js';
+import { loadMcpConfig } from '../config/loader.js';
 
-export type Permission = 'read' | 'write' | 'execute' | 'approve';
+export type Permission = 'read' | 'write' | 'execute' | 'approve' | 'use_tool';
 
 export interface RBACRule {
   node: number | 'orchestrator' | 'redteam' | 'supervisor';
@@ -86,4 +87,38 @@ export async function enforcePermission(
   }
 
   logger.debug('RBAC check passed', { node, resource, permission });
+}
+
+/**
+ * Verify that a specific node/role is allowed to use an MCP tool.
+ */
+export async function enforceToolPermission(
+  node: number,
+  toolName: string,
+  taskId?: string
+): Promise<void> {
+  const mcpConfig = await loadMcpConfig();
+  
+  // Determine role based on node ID (Sync with DEFAULT_RULES)
+  let role: keyof typeof mcpConfig.access_matrix = 'worker';
+  if (node === 0) role = 'orchestrator';
+  else if (node === 5) role = 'redteam';
+  else if (node >= 6) role = 'supervisor';
+
+  const allowedTools = mcpConfig.access_matrix[role] || [];
+  const isAllowed = allowedTools.includes(toolName);
+
+  if (!isAllowed) {
+    await logAuditEntry('RBAC_TOOL_VIOLATION', {
+      node,
+      role,
+      toolName,
+      allowed: false,
+    }, taskId, node);
+
+    logger.warn('RBAC tool violation', { node, role, toolName });
+    throw new Error(`RBAC: Role '${role}' (Node ${node}) is not authorized to use tool '${toolName}'`);
+  }
+
+  logger.debug('RBAC tool check passed', { role, toolName });
 }
