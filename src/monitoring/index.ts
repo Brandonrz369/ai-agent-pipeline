@@ -54,6 +54,7 @@ export interface ErrorEvent {
   errorType: ErrorType;
   message: string;
   taskId?: string;
+  traceId?: string;
   details?: Record<string, unknown>;
 }
 
@@ -248,6 +249,7 @@ export class ErrorMonitor {
     message: string,
     taskId?: string,
     details?: Record<string, unknown>,
+    traceId?: string,
   ): Promise<Alert | null> {
     const event: ErrorEvent = {
       timestamp: new Date().toISOString(),
@@ -255,6 +257,7 @@ export class ErrorMonitor {
       errorType,
       message,
       taskId,
+      traceId,
       details,
     };
 
@@ -264,6 +267,7 @@ export class ErrorMonitor {
       errorType,
       message,
       taskId,
+      traceId,
     });
 
     // Check thresholds
@@ -359,17 +363,26 @@ export class ErrorMonitor {
    * Send an alert notification to Discord.
    */
   private async sendDiscordAlert(alert: Alert): Promise<void> {
+    const fields = [
+      { name: 'Component', value: alert.threshold.component, inline: true },
+      { name: 'Error Type', value: alert.threshold.errorType, inline: true },
+      { name: 'Count', value: `${alert.triggerCount} in ${Math.round(alert.threshold.windowMs / 60_000)}m`, inline: true },
+      { name: 'Alert ID', value: alert.id, inline: true },
+      { name: 'Threshold', value: `${alert.threshold.maxCount} / ${Math.round(alert.threshold.windowMs / 60_000)}m`, inline: true },
+    ];
+
+    if (alert.lastEvent) {
+      const lastEvent = this.events.find(e => e.timestamp === alert.lastEvent);
+      if (lastEvent?.traceId) {
+        fields.push({ name: 'Last Trace ID', value: lastEvent.traceId, inline: true });
+      }
+    }
+
     const embed = {
       title: `Pipeline Alert — ${alert.severity}`,
       description: alert.threshold.description,
       color: SEVERITY_COLORS[alert.severity],
-      fields: [
-        { name: 'Component', value: alert.threshold.component, inline: true },
-        { name: 'Error Type', value: alert.threshold.errorType, inline: true },
-        { name: 'Count', value: `${alert.triggerCount} in ${Math.round(alert.threshold.windowMs / 60_000)}m`, inline: true },
-        { name: 'Alert ID', value: alert.id, inline: true },
-        { name: 'Threshold', value: `${alert.threshold.maxCount} / ${Math.round(alert.threshold.windowMs / 60_000)}m`, inline: true },
-      ],
+      fields,
       footer: { text: `Pipeline Error Monitor | ${alert.firedAt}` },
       timestamp: alert.firedAt,
     };

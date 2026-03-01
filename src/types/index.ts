@@ -44,6 +44,7 @@ export interface TaskConstraints {
 export interface TaskEnvelope {
   id: string;
   task_id_ref?: string;
+  trace_id: string;
   ttl_max: number;
   hops: number;
   mode: PromptMode;

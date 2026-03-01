@@ -104,7 +104,14 @@ export class CompletionLoopDriver {
       const preHop = this.antiLoop.preHopCheck(envelope);
       if (!preHop.allowed) {
         logger.warn('Loop: TTL expired', { task_id: task.task_id, reason: preHop.reason });
-        void getMonitor().recordError('orchestrator','ttl_exceeded','Task TTL expired after '+envelope.hops+' hops: '+preHop.reason,task.task_id,{ hops: envelope.hops, ttl_max: envelope.ttl_max });
+        void getMonitor().recordError(
+          'orchestrator',
+          'ttl_exceeded',
+          'Task TTL expired after '+envelope.hops+' hops: '+preHop.reason,
+          task.task_id,
+          { hops: envelope.hops, ttl_max: envelope.ttl_max },
+          envelope.trace_id
+        );
         history.push({
           hop: envelope.hops,
           mode: envelope.mode,
@@ -145,7 +152,14 @@ export class CompletionLoopDriver {
 
       // Record executor failure
       if (!result.success) {
-        void getMonitor().recordError("executor","task_failure","Executor returned failure: "+(output.summary||"").slice(0,200),task.task_id,{ exitCode: result.exitCode, hop: envelope.hops });
+        void getMonitor().recordError(
+          "executor",
+          "task_failure",
+          "Executor returned failure: "+(output.summary||"").slice(0,200),
+          task.task_id,
+          { exitCode: result.exitCode, hop: envelope.hops },
+          envelope.trace_id
+        );
       }
 
       // VERIFY via Gemini
@@ -162,7 +176,14 @@ export class CompletionLoopDriver {
 
       // Record ESCALATE verdict
       if (verification.verdict === 'ESCALATE') {
-        void getMonitor().recordError('verifier','escalation','Verifier returned ESCALATE: '+verification.reasoning,task.task_id,{ issues: verification.issues, hop: envelope.hops });
+        void getMonitor().recordError(
+          'verifier',
+          'escalation',
+          'Verifier returned ESCALATE: '+verification.reasoning,
+          task.task_id,
+          { issues: verification.issues, hop: envelope.hops },
+          envelope.trace_id
+        );
       }
 
       // If PASS, we're done
@@ -201,7 +222,14 @@ export class CompletionLoopDriver {
           task_id: task.task_id,
           reason: postHop.message,
         });
-        void getMonitor().recordError('dead-letter','dead_letter','Task dead-lettered: '+postHop.message,task.task_id,{ totalHops: envelope.hops, finalMode: postHop.envelope.mode });
+        void getMonitor().recordError(
+          'dead-letter',
+          'dead_letter',
+          'Task dead-lettered: '+postHop.message,
+          task.task_id,
+          { totalHops: envelope.hops, finalMode: postHop.envelope.mode },
+          envelope.trace_id
+        );
         return {
           task_id: task.task_id,
           status: 'DEAD_LETTER',

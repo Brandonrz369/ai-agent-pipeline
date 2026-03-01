@@ -44,6 +44,7 @@ export class AntiLoopEngine {
     return {
       id: `env-${taskId}-${Date.now()}`,
       task_id_ref: taskIdRef,
+      trace_id: `trace-${taskId}-${Math.random().toString(36).slice(2, 11)}`,
       ttl_max: this.config.ttlMax,
       hops: 0,
       mode: 'EXECUTE',
