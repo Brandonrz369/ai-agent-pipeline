@@ -25,6 +25,11 @@
 set -euo pipefail
 
 PIPELINE_DIR="/home/brans/ai-agent-pipeline"
+
+# Load secrets from .env (gitignored)
+if [ -f "$PIPELINE_DIR/.env" ]; then
+  set -a; source "$PIPELINE_DIR/.env"; set +a
+fi
 COLLAB_DIR="$PIPELINE_DIR/.collab"
 STATE_FILE="$HOME/.openclaw/state/pipeline-driver.json"
 LOCK_FILE="/tmp/pipeline-driver.lock"
@@ -48,7 +53,7 @@ WORKER_MODEL="sonnet"        # "sonnet" saves Opus quota for builders
 export GEMINI_API_KEY="${GEMINI_API_KEY:-}"
 
 # Permission prefix — prepended to all agent prompts
-PERMISSION_PREFIX="8925 sudo"
+PERMISSION_PREFIX="${NEXUS_PERMISSION_PREFIX:-sudo}"
 
 # Prevent concurrent runs
 if [ -f "$LOCK_FILE" ]; then
@@ -368,12 +373,36 @@ for action in decision.get('actions', []):
         SPAWN_MODEL="${WORKER_MODEL:-opus}"
       fi
 
+      # Session persistence: track session IDs per agent so we can --resume
+      SESSION_ID_FILE="$TMP_DIR/${AGENT:-agent}-session-id.txt"
+      RESUME_FLAG=""
+      if [ -f "$SESSION_ID_FILE" ]; then
+        PREV_SESSION_ID=$(cat "$SESSION_ID_FILE" 2>/dev/null)
+        if [ -n "$PREV_SESSION_ID" ]; then
+          RESUME_FLAG="--resume $PREV_SESSION_ID"
+          log "Resuming previous session $PREV_SESSION_ID for $AGENT"
+        fi
+      fi
+
+      # Check if tmux session already exists and agent is still running
+      if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+        log "SKIP: $SESSION_NAME already running"
+        continue
+      fi
+
       log "Spawning $SESSION_NAME ($AGENT) [model=$SPAWN_MODEL]..."
-      tmux kill-session -t "$SESSION_NAME" 2>/dev/null || true
       tmux new-session -d -s "$SESSION_NAME" \
-        "cd $PIPELINE_DIR && env -u CLAUDECODE claude -p \"\$(cat $TMP_DIR/${AGENT:-agent}-prompt.txt)\" $AGENT_MODEL_FLAG $MCP_FLAG 2>&1 | tee -a $LOG_FILE; echo '${SESSION_NAME} SESSION ENDED at '\$(date) >> $LOG_FILE; sleep 10" 2>/dev/null \
+        "cd $PIPELINE_DIR && env -u CLAUDECODE claude -p \"\$(cat $TMP_DIR/${AGENT:-agent}-prompt.txt)\" $AGENT_MODEL_FLAG $MCP_FLAG $RESUME_FLAG 2>&1 | tee -a $LOG_FILE; echo '${SESSION_NAME} SESSION ENDED at '\$(date) >> $LOG_FILE; sleep 10" 2>/dev/null \
         && log "STARTED: $SESSION_NAME" \
         || log "WARN: $SESSION_NAME spawn failed"
+
+      # Capture the session ID for future --resume
+      # Claude prints session ID in output; also check the project sessions dir
+      LATEST_SESSION=$(ls -t ~/.claude/projects/-home-brans-ai-agent-pipeline/*.jsonl 2>/dev/null | head -1 | xargs -I{} basename {} .jsonl)
+      if [ -n "$LATEST_SESSION" ]; then
+        echo "$LATEST_SESSION" > "$SESSION_ID_FILE"
+        log "Saved session ID: $LATEST_SESSION"
+      fi
       ;;
 
     shell_command)

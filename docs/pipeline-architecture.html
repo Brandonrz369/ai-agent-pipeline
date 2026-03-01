@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Agent Pipeline — Architecture</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0d1117; color: #c9d1d9; padding: 40px 20px; }
+  h1 { text-align: center; font-size: 2em; margin-bottom: 8px; color: #58a6ff; }
+  h2 { font-size: 1.4em; margin: 40px 0 16px; color: #58a6ff; border-bottom: 1px solid #21262d; padding-bottom: 8px; }
+  h3 { font-size: 1.1em; margin: 24px 0 8px; color: #79c0ff; }
+  .subtitle { text-align: center; color: #8b949e; margin-bottom: 40px; font-size: 1.1em; }
+  .container { max-width: 1000px; margin: 0 auto; }
+  p, li { line-height: 1.7; color: #c9d1d9; }
+  ul { padding-left: 24px; margin: 8px 0; }
+
+  /* Diagram */
+  .diagram { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 32px; margin: 24px 0; overflow-x: auto; }
+  .diagram pre { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 14px; line-height: 1.6; color: #c9d1d9; white-space: pre; }
+  .highlight-blue { color: #58a6ff; font-weight: bold; }
+  .highlight-green { color: #3fb950; font-weight: bold; }
+  .highlight-yellow { color: #d29922; font-weight: bold; }
+  .highlight-red { color: #f85149; font-weight: bold; }
+  .highlight-purple { color: #bc8cff; font-weight: bold; }
+  .highlight-dim { color: #484f58; }
+
+  /* Cards */
+  .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin: 16px 0; }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; }
+  .card h4 { font-size: 1em; margin-bottom: 8px; }
+  .card.blue { border-left: 3px solid #58a6ff; }
+  .card.blue h4 { color: #58a6ff; }
+  .card.green { border-left: 3px solid #3fb950; }
+  .card.green h4 { color: #3fb950; }
+  .card.yellow { border-left: 3px solid #d29922; }
+  .card.yellow h4 { color: #d29922; }
+  .card.purple { border-left: 3px solid #bc8cff; }
+  .card.purple h4 { color: #bc8cff; }
+  .card.red { border-left: 3px solid #f85149; }
+  .card.red h4 { color: #f85149; }
+
+  /* Flow steps */
+  .flow { counter-reset: step; margin: 16px 0; }
+  .flow .step { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px 16px 16px 56px; margin: 8px 0; position: relative; }
+  .flow .step::before { counter-increment: step; content: counter(step); position: absolute; left: 16px; top: 16px; width: 28px; height: 28px; background: #58a6ff; color: #0d1117; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; }
+  .flow .step strong { color: #58a6ff; }
+  .flow .step code { background: #21262d; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; color: #79c0ff; }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+  th { background: #161b22; color: #58a6ff; text-align: left; padding: 10px 12px; border: 1px solid #30363d; font-size: 0.9em; }
+  td { padding: 10px 12px; border: 1px solid #30363d; font-size: 0.9em; }
+  tr:nth-child(even) { background: #161b22; }
+  .status-done { color: #3fb950; font-weight: bold; }
+  .status-open { color: #d29922; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; font-weight: 500; }
+  .tag-free { background: #0d2818; color: #3fb950; }
+  .tag-paid { background: #2d1600; color: #d29922; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>AI Agent Pipeline</h1>
+<p class="subtitle">How your autonomous AI workforce operates</p>
+
+<!-- ═══ THE BIG PICTURE ═══ -->
+<h2>The Big Picture</h2>
+<div class="diagram"><pre>
+<span class="highlight-dim">┌─────────────────────────────────────────────────────────────────────┐</span>
+<span class="highlight-dim">│</span>  <span class="highlight-yellow">YOU</span> (the boss)                                                    <span class="highlight-dim">│</span>
+<span class="highlight-dim">│</span>    │  Add tasks to TASKBOARD.md                                   <span class="highlight-dim">│</span>
+<span class="highlight-dim">│</span>    │  Drop documents in research/ or .collab/                      <span class="highlight-dim">│</span>
+<span class="highlight-dim">│</span>    ▼                                                               <span class="highlight-dim">│</span>
+<span class="highlight-dim">│</span>  <span class="highlight-blue">NEXUS</span> (the office manager) ─── runs every 30 min ──┐             <span class="highlight-dim">│</span>
+<span class="highlight-dim">│</span>    │  Reads all state files                           │             <span class="highlight-dim">│</span>
+<span class="highlight-dim">│</span>    │  Compresses via <span class="highlight-green">Gemini</span> (free)                    │             <span class="highlight-dim">│</span>
+<span class="highlight-dim">│</span>    │  Asks <span class="highlight-purple">Claude</span> for game plan                      │             <span class="highlight-dim">│</span>
+<span class="highlight-dim">│</span>    │  Executes the plan                               │             <span class="highlight-dim">│</span>
+<span class="highlight-dim">│</span>    │                                                   │             <span class="highlight-dim">│</span>
+<span class="highlight-dim">│</span>    ├──────────┬──────────────┐                        │             <span class="highlight-dim">│</span>
+<span class="highlight-dim">│</span>    ▼          ▼              ▼                        │             <span class="highlight-dim">│</span>
+<span class="highlight-dim">│</span>  <span class="highlight-purple">ALPHA</span>     <span class="highlight-purple">BRAVO</span>        <span class="highlight-purple">CHARLIE</span>                   │             <span class="highlight-dim">│</span>
+<span class="highlight-dim">│</span>  supervisor  builder #1    builder #2                 │             <span class="highlight-dim">│</span>
+<span class="highlight-dim">│</span>  (Sonnet)   (Sonnet)      (Sonnet)                   │             <span class="highlight-dim">│</span>
+<span class="highlight-dim">│</span>    │          │              │                        │             <span class="highlight-dim">│</span>
+<span class="highlight-dim">│</span>    │     ┌────┴────┐    ┌───┴────┐                    │             <span class="highlight-dim">│</span>
+<span class="highlight-dim">│</span>    │     │ TOOLS   │    │ TOOLS  │                    │             <span class="highlight-dim">│</span>
+<span class="highlight-dim">│</span>    ▼     ▼         ▼    ▼        ▼                    │             <span class="highlight-dim">│</span>
+<span class="highlight-dim">│</span>  ┌──────────────────────────────────┐    ┌────────────┤             <span class="highlight-dim">│</span>
+<span class="highlight-dim">│</span>  │  <span class="highlight-green">MCP Servers</span> (shared by all)     │    │  <span class="highlight-dim">FILES</span>     │             <span class="highlight-dim">│</span>
+<span class="highlight-dim">│</span>  │  • gemini (deep research, 30+)  │    │  TASKBOARD │             <span class="highlight-dim">│</span>
+<span class="highlight-dim">│</span>  │  • brain-context (memory cache) │    │  MESSAGES  │◄── shared   <span class="highlight-dim">│</span>
+<span class="highlight-dim">│</span>  │  • gemini-antigravity (backup)  │    │  STATUS    │    state    <span class="highlight-dim">│</span>
+<span class="highlight-dim">│</span>  └──────────────────────────────────┘    │  research/ │             <span class="highlight-dim">│</span>
+<span class="highlight-dim">│</span>                                          └────────────┘             <span class="highlight-dim">│</span>
+<span class="highlight-dim">└─────────────────────────────────────────────────────────────────────┘</span>
+</pre></div>
+
+<!-- ═══ THE 30-MINUTE CYCLE ═══ -->
+<h2>The 30-Minute Cycle</h2>
+<p>Every 30 minutes, NEXUS wakes up and runs this loop:</p>
+
+<div class="flow">
+  <div class="step"><strong>Read ALL state</strong> — TASKBOARD, MESSAGES, each agent's STATUS, git status, tmux sessions. No truncation — everything.</div>
+  <div class="step"><strong>Compress via Gemini</strong> — Sends the full state to Gemini 3.1 Pro (free, via Antigravity proxy). Gemini compresses it into a focused situation report.</div>
+  <div class="step"><strong>Ask the Brain</strong> — Sends compressed report to Claude (the strategic brain call). Claude analyzes the situation and returns a JSON game plan: which agents to spawn, what tasks to assign, what commands to run.</div>
+  <div class="step"><strong>Execute the plan</strong> — NEXUS parses the JSON and acts: spawns agents in tmux, runs shell commands, navigates browser, writes files. Each agent gets a specific prompt with their task.</div>
+  <div class="step"><strong>Agents work independently</strong> — ALPHA/BRAVO/CHARLIE run in their own tmux sessions. They read their IDENTITY file, load prior context from brain-context cache, do their task, save findings back to cache, update STATUS, and exit.</div>
+  <div class="step"><strong>Next cycle</strong> — 30 min later, NEXUS reads what happened and decides the next move.</div>
+</div>
+
+<!-- ═══ MEMORY & CONTEXT ═══ -->
+<h2>How Agents Remember (Context Continuity)</h2>
+<p>Each agent session starts fresh — but they have three ways to maintain continuity:</p>
+
+<div class="card-grid">
+  <div class="card green">
+    <h4>1. Brain-Context Cache (long-term memory)</h4>
+    <p>Agents call <code>store_context(key, content)</code> before exiting. Gemini compresses it to ~200 tokens. Next session calls <code>get_summary(key)</code> to load prior findings.</p>
+    <p><strong>Persists forever.</strong> No expiration.</p>
+    <p><span class="tag tag-free">FREE</span> via Antigravity proxy</p>
+  </div>
+  <div class="card blue">
+    <h4>2. Shared Files (coordination)</h4>
+    <p>TASKBOARD.md, MESSAGES.md, STATUS.md, and <code>research/</code> directory. Every agent reads these on startup. Any agent can write updates.</p>
+    <p><strong>Persists forever.</strong> On disk.</p>
+    <p><span class="tag tag-free">FREE</span></p>
+  </div>
+  <div class="card yellow">
+    <h4>3. Gemini Document Cache (within-session)</h4>
+    <p>For large documents (PDFs, email dumps), agents call <code>gemini-create-cache</code> to upload once, then <code>gemini-query-cache</code> repeatedly without re-uploading.</p>
+    <p><strong>Expires after 1-60 min.</strong> Session-scoped only.</p>
+    <p><span class="tag tag-free">FREE</span> via Antigravity proxy</p>
+  </div>
+  <div class="card purple">
+    <h4>4. Session Resume (NEW)</h4>
+    <p>Agent sessions are now tracked by ID. When NEXUS respawns an agent, it uses <code>claude --resume {id}</code> to continue with full conversation history intact.</p>
+    <p><strong>Persists across sessions.</strong> Full context restored.</p>
+    <p><span class="tag tag-paid">USES CLAUDE CREDITS</span></p>
+  </div>
+</div>
+
+<!-- ═══ WHAT AGENTS CAN DO ═══ -->
+<h2>What Agents Can Do</h2>
+
+<div class="card-grid">
+  <div class="card blue">
+    <h4>Write Code & Files</h4>
+    <p>Create, edit, and delete files anywhere in the project. Write reports, documents, research notes.</p>
+  </div>
+  <div class="card blue">
+    <h4>Run Commands</h4>
+    <p>Git, npm, tests, builds, any shell command. Can install packages, run scripts.</p>
+  </div>
+  <div class="card green">
+    <h4>Deep Web Research</h4>
+    <p>Via <code>gemini-deep-research</code> — multi-step research with citations on any topic.</p>
+  </div>
+  <div class="card green">
+    <h4>Analyze Documents</h4>
+    <p>Via <code>gemini-analyze-document</code> — read and analyze PDFs, DOCX, CSV, any file format.</p>
+  </div>
+  <div class="card yellow">
+    <h4>Browser Automation</h4>
+    <p>SUPERVISE mode — screenshot, click, navigate via Chrome DevTools Protocol.</p>
+  </div>
+  <div class="card yellow">
+    <h4>Coordinate</h4>
+    <p>Post messages to MESSAGES.md, update TASKBOARD, assign tasks to each other.</p>
+  </div>
+</div>
+
+<!-- ═══ TOOLS INVENTORY ═══ -->
+<h2>Complete Tool Inventory</h2>
+
+<h3>Gemini MCP (@rlabs-inc — 30+ tools)</h3>
+<table>
+  <tr><th>Tool</th><th>What It Does</th><th>Cost</th></tr>
+  <tr><td><code>gemini-deep-research</code></td><td>Multi-step web research with citations</td><td><span class="tag tag-paid">API Key</span></td></tr>
+  <tr><td><code>gemini-search</code></td><td>Quick web search with sources</td><td><span class="tag tag-paid">API Key</span></td></tr>
+  <tr><td><code>gemini-query</code></td><td>Ask Gemini anything</td><td><span class="tag tag-paid">API Key</span></td></tr>
+  <tr><td><code>gemini-analyze-document</code></td><td>Analyze PDFs, DOCX, CSV files</td><td><span class="tag tag-paid">API Key</span></td></tr>
+  <tr><td><code>gemini-analyze-code</code></td><td>Code review and analysis</td><td><span class="tag tag-paid">API Key</span></td></tr>
+  <tr><td><code>gemini-brainstorm</code></td><td>Multi-perspective brainstorming</td><td><span class="tag tag-paid">API Key</span></td></tr>
+  <tr><td><code>gemini-summarize</code></td><td>Summarize large content</td><td><span class="tag tag-paid">API Key</span></td></tr>
+  <tr><td><code>gemini-extract</code></td><td>Extract structured data from text</td><td><span class="tag tag-paid">API Key</span></td></tr>
+  <tr><td><code>gemini-structured</code></td><td>Get JSON-formatted output</td><td><span class="tag tag-paid">API Key</span></td></tr>
+  <tr><td><code>gemini-create-cache</code></td><td>Cache large docs for repeated querying</td><td><span class="tag tag-paid">API Key</span></td></tr>
+  <tr><td><code>gemini-generate-image</code></td><td>Create images from text prompts</td><td><span class="tag tag-paid">API Key</span></td></tr>
+  <tr><td><code>gemini-generate-video</code></td><td>Create videos (Veo 2.0)</td><td><span class="tag tag-paid">API Key</span></td></tr>
+  <tr><td><code>gemini-speak</code></td><td>Text-to-speech with voice selection</td><td><span class="tag tag-paid">API Key</span></td></tr>
+  <tr><td><code>gemini-run-code</code></td><td>Execute Python in Gemini sandbox</td><td><span class="tag tag-paid">API Key</span></td></tr>
+  <tr><td><code>gemini-youtube</code></td><td>Analyze YouTube videos</td><td><span class="tag tag-paid">API Key</span></td></tr>
+</table>
+
+<h3>Brain-Context Cache (persistent memory)</h3>
+<table>
+  <tr><th>Tool</th><th>What It Does</th><th>Cost</th></tr>
+  <tr><td><code>store_context</code></td><td>Compress and save findings (persists forever)</td><td><span class="tag tag-free">FREE</span></td></tr>
+  <tr><td><code>get_summary</code></td><td>Load a compressed summary by key</td><td><span class="tag tag-free">FREE</span></td></tr>
+  <tr><td><code>list_keys</code></td><td>See all stored context entries</td><td><span class="tag tag-free">FREE</span></td></tr>
+  <tr><td><code>delete_context</code></td><td>Remove a stored entry</td><td><span class="tag tag-free">FREE</span></td></tr>
+  <tr><td><code>stats</code></td><td>See compression stats</td><td><span class="tag tag-free">FREE</span></td></tr>
+</table>
+
+<h3>Gemini Antigravity (backup — free, no key needed)</h3>
+<table>
+  <tr><th>Tool</th><th>What It Does</th><th>Cost</th></tr>
+  <tr><td><code>gemini-query</code></td><td>Ask Gemini anything</td><td><span class="tag tag-free">FREE</span></td></tr>
+  <tr><td><code>gemini-brainstorm</code></td><td>Multi-perspective brainstorming</td><td><span class="tag tag-free">FREE</span></td></tr>
+  <tr><td><code>gemini-analyze-code</code></td><td>Code review</td><td><span class="tag tag-free">FREE</span></td></tr>
+  <tr><td><code>gemini-search</code></td><td>Web search with citations</td><td><span class="tag tag-free">FREE</span></td></tr>
+  <tr><td><code>gemini-deep-research</code></td><td>Deep research</td><td><span class="tag tag-free">FREE</span></td></tr>
+  <tr><td colspan="3"><em>...plus 9 more (summarize, extract, structured, cache, count-tokens)</em></td></tr>
+</table>
+
+<!-- ═══ WHAT'S BUILT ═══ -->
+<h2>Build Status — What's Done</h2>
+<table>
+  <tr><th>Component</th><th>Status</th><th>Tests</th></tr>
+  <tr><td>Core Orchestrator (classify, route, dispatch)</td><td class="status-done">DONE</td><td>~85</td></tr>
+  <tr><td>CLI (run, validate, dead-letter, audit, health, escalation)</td><td class="status-done">DONE</td><td>~40</td></tr>
+  <tr><td>Security (RBAC + HITL triggers)</td><td class="status-done">DONE</td><td>9</td></tr>
+  <tr><td>Health Check System</td><td class="status-done">DONE</td><td>6</td></tr>
+  <tr><td>Legacy REST API (search, filter, pagination)</td><td class="status-done">DONE</td><td>22</td></tr>
+  <tr><td>Monitoring + Error Recording</td><td class="status-done">DONE</td><td>10</td></tr>
+  <tr><td>Escalation Dashboard</td><td class="status-done">DONE</td><td>12</td></tr>
+  <tr><td>SUPERVISE Mode (Computer Use)</td><td class="status-done">DONE</td><td>13</td></tr>
+  <tr><td>Docker Infrastructure</td><td class="status-done">DONE</td><td>—</td></tr>
+  <tr><td>SQLite Backend</td><td class="status-done">DONE</td><td>3</td></tr>
+  <tr><td>NEXUS Driver (inverted brainstorm)</td><td class="status-done">DONE</td><td>—</td></tr>
+  <tr><td>Brain-Context Cache MCP</td><td class="status-done">DONE</td><td>—</td></tr>
+  <tr><td>Gemini Antigravity MCP</td><td class="status-done">DONE</td><td>—</td></tr>
+  <tr><td>Session Resume (--resume)</td><td class="status-done">DONE</td><td>—</td></tr>
+  <tr><td><strong>Total</strong></td><td></td><td><strong>243</strong></td></tr>
+</table>
+
+<!-- ═══ FOR THE LEGAL CASE ═══ -->
+<h2>Using This for a Legal Case</h2>
+<p>To use the pipeline for legal research (e.g., wrongful termination):</p>
+
+<div class="flow">
+  <div class="step"><strong>Drop your documents</strong> in <code>.collab/case/</code> — emails, termination letter, contracts, performance reviews, anything relevant.</div>
+  <div class="step"><strong>Update the TASKBOARD</strong> with legal tasks — "Research CA wrongful termination law", "Build timeline from emails", "Draft demand letter", etc.</div>
+  <div class="step"><strong>Update IDENTITY files</strong> — Tell agents they're doing legal research, not coding. ALPHA reviews legal strategy, BRAVO does research, CHARLIE drafts documents.</div>
+  <div class="step"><strong>Enable the driver</strong> — NEXUS starts the 30-min cycle. Agents pick up tasks, research with <code>gemini-deep-research</code>, cache findings in brain-context, write reports to <code>research/</code>.</div>
+  <div class="step"><strong>Over 2-3 days</strong> — agents iteratively research, refine, and produce: legal memo, timeline, demand letter, EEOC charge narrative, comparable cases, strategy document.</div>
+</div>
+
+<div class="card red" style="margin-top: 24px;">
+  <h4>Important Disclaimer</h4>
+  <p>This system does research and document drafting. It is NOT a lawyer and cannot give legal advice. Use its output as a starting point for consultation with a real attorney. Always verify legal citations — AI can hallucinate case law.</p>
+</div>
+
+</div>
+</body>
+</html>
