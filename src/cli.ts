@@ -185,6 +185,17 @@ program
     await escalationCommand(opts);
   });
 
+program
+  .command('recovery')
+  .description('Phase 4: Automated Task Recovery — re-dispatch eligible DLQ items')
+  .option('--dry-run', 'List recoverable items without executing')
+  .option('--limit <number>', 'Maximum items to recover', '5')
+  .addHelpText('after','\nExamples:\n  $ pipeline recovery\n  $ pipeline recovery --dry-run\n  $ pipeline recovery --limit 10')
+  .action(async (opts) => {
+    const { recoveryCommand } = await import('./commands/recovery.js');
+    await recoveryCommand(opts);
+  });
+
 const audit = program
   .command('audit')
   .description('Audit trail management')
