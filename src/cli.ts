@@ -200,4 +200,4 @@ process.on('unhandledRejection', (reason) => {
   }).catch(() => {});
 });
 
-program.parse();
+await program.parseAsync();
