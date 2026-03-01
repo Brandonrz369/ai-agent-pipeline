@@ -21,6 +21,23 @@ export class GeminiOrchestrator {
     this.client = new AntigravityClient('gemini-3.1-pro-high');
     this.config = config;
     this.registry = new WorkerRegistry();
+    
+    // Auto-register local node for Phase 4 coordination
+    void this.initLocalNode();
+  }
+
+  private async initLocalNode() {
+    const os = await import('node:os');
+    await this.registry.registerNode({
+      id: 'node-master',
+      hostname: os.hostname(),
+      ip: '127.0.0.1',
+      port: 3847,
+      status: 'ONLINE',
+      capabilities: ['EXECUTE', 'ARCHITECT', 'SUPERVISE'],
+      last_seen: new Date().toISOString(),
+      load_average: os.loadavg()[0]
+    });
   }
 
   private async getLoopDriver(): Promise<CompletionLoopDriver> {

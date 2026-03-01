@@ -49,4 +49,18 @@ function initSchema(db: Database.Database) {
       file_path TEXT
     )
   `).run();
+
+  // Agency Tasks (Legacy Migration)
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS agency_tasks (
+      id TEXT PRIMARY KEY,
+      description TEXT,
+      status TEXT,
+      assigned TEXT,
+      client_name TEXT,
+      application_name TEXT,
+      created_at TEXT,
+      updated_at TEXT
+    )
+  `).run();
 }
