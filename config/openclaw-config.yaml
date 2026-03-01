@@ -46,7 +46,7 @@ orchestrator:
 
 # ── Gemini Verifier ──────────────────────────────────────────────
 verifier:
-  model: "gemini-3.1-pro-high"
+  model: "gemini-3-flash"
   api_key: "${GEMINI_API_KEY}"
   role: "post_execution_validator"
   checks:

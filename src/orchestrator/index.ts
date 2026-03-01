@@ -69,8 +69,8 @@ export class GeminiOrchestrator {
     const pipelineConfig = await loadPipelineConfig();
     const driverConfig: LoopDriverConfig = {
       geminiApiKey: this.config.geminiApiKey || process.env.GEMINI_API_KEY || '',
-      orchestratorModel: 'gemini-3.1-pro-high',
-      verifierModel: 'gemini-3.1-pro-high',
+      orchestratorModel: pipelineConfig.orchestrator.model || 'gemini-3.1-pro-high',
+      verifierModel: pipelineConfig.verifier.model || 'gemini-3.1-pro-high',
       ttlMax: pipelineConfig.anti_loop.ttl_max,
       deadLetterPath: pipelineConfig.dead_letter.path,
       deadLetterBackend: pipelineConfig.dead_letter.backend,

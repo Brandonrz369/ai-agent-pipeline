@@ -146,6 +146,26 @@ program
   });
 
 program
+  .command('auto-decompose')
+  .description('Phase 7: Autonomous Task Creation — scan repo for gaps and generate blueprints')
+  .addHelpText('after','\nExamples:\n  $ pipeline auto-decompose')
+  .action(async () => {
+    const { autoDecomposeCommand } = await import('./commands/auto-decompose.js');
+    await autoDecomposeCommand();
+  });
+
+program
+  .command('watchdog')
+  .description('Phase 7: Self-Healing Watchdog — monitor and recover stalled nodes')
+  .option('-i, --interval <seconds>', 'Check interval', '60')
+  .option('--once', 'Run once and exit')
+  .addHelpText('after','\nExamples:\n  $ pipeline watchdog\n  $ pipeline watchdog --interval 30\n  $ pipeline watchdog --once')
+  .action(async (opts) => {
+    const { watchdogCommand } = await import('./commands/watchdog.js');
+    await watchdogCommand(opts);
+  });
+
+program
   .command('health')
   .description('Check pipeline health status')
   .option('--json', 'Output as JSON')
