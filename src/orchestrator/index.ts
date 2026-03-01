@@ -73,6 +73,7 @@ export class GeminiOrchestrator {
       verifierModel: 'gemini-3.1-pro-high',
       ttlMax: pipelineConfig.anti_loop.ttl_max,
       deadLetterPath: pipelineConfig.dead_letter.path,
+      deadLetterBackend: pipelineConfig.dead_letter.backend,
       cwd: this.config.cwd,
       dryRun: this.config.dryRun,
     };

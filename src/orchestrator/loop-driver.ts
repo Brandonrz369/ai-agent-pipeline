@@ -5,6 +5,7 @@ import type {
   VerifierResult,
   LoopState,
   LoopAction,
+  DeadLetterBackend,
 } from '../types/index.js';
 import { AntiLoopEngine } from '../anti-loop/index.js';
 import { ClaudeCodeExecutor } from '../executor/index.js';
@@ -22,6 +23,7 @@ export interface LoopDriverConfig {
   verifierModel?: string;
   ttlMax?: number;
   deadLetterPath?: string;
+  deadLetterBackend?: DeadLetterBackend;
   cwd?: string;
   dryRun?: boolean;
 }
@@ -58,6 +60,7 @@ export class CompletionLoopDriver {
     this.antiLoop = new AntiLoopEngine({
       ttlMax: config.ttlMax || 10,
       deadLetterPath: config.deadLetterPath || '~/.openclaw/dead-letter/',
+      deadLetterBackend: config.deadLetterBackend,
     });
 
     this.executor = new ClaudeCodeExecutor({

@@ -1,4 +1,4 @@
-import type { TaskEnvelope, TaskBlueprint, VerifierResult } from '../types/index.js';
+import type { TaskEnvelope, TaskBlueprint, VerifierResult, DeadLetterBackend } from '../types/index.js';
 import { checkTTL, incrementHop } from './ttl.js';
 import { applyHysteresis, type HysteresisConfig } from './hysteresis.js';
 import { checkBackflow, recordStateHash, computeStateHash } from './backflow.js';
@@ -10,6 +10,7 @@ export interface AntiLoopConfig {
   hysteresis: HysteresisConfig;
   backflowDetection: boolean;
   deadLetterPath: string;
+  deadLetterBackend?: DeadLetterBackend;
 }
 
 const DEFAULT_CONFIG: AntiLoopConfig = {
@@ -107,7 +108,7 @@ export class AntiLoopEngine {
         });
 
         // Send to dead-letter on backflow
-        await sendToDeadLetter(updated, backflowResult.message, task, this.config.deadLetterPath);
+        await sendToDeadLetter(updated, backflowResult.message, task, this.config.deadLetterPath, this.config.deadLetterBackend);
         deadLettered = true;
       }
 
@@ -117,7 +118,7 @@ export class AntiLoopEngine {
     // 3. Check TTL after hop
     const ttlResult = checkTTL(updated);
     if (ttlResult.expired && !deadLettered) {
-      await sendToDeadLetter(updated, ttlResult.message, task, this.config.deadLetterPath);
+      await sendToDeadLetter(updated, ttlResult.message, task, this.config.deadLetterPath, this.config.deadLetterBackend);
       deadLettered = true;
     }
 

@@ -7,8 +7,9 @@ export async function sendToDeadLetter(
   reason: string,
   task?: TaskBlueprint,
   customPath?: string,
+  backend?: DeadLetterBackend,
 ): Promise<DeadLetterItem> {
-  const store = createDeadLetterStore(undefined, customPath);
+  const store = createDeadLetterStore(backend, customPath);
   
   const item = await store.save({
     id: envelope.id,
@@ -26,32 +27,35 @@ export async function sendToDeadLetter(
   return item;
 }
 
-export async function listDeadLetter(customPath?: string): Promise<DeadLetterItem[]> {
-  const store = createDeadLetterStore(undefined, customPath);
+export async function listDeadLetter(customPath?: string, backend?: DeadLetterBackend): Promise<DeadLetterItem[]> {
+  const store = createDeadLetterStore(backend, customPath);
   return store.list();
 }
 
 export async function inspectDeadLetter(
   id: string,
   customPath?: string,
+  backend?: DeadLetterBackend,
 ): Promise<DeadLetterItem | null> {
-  const store = createDeadLetterStore(undefined, customPath);
+  const store = createDeadLetterStore(backend, customPath);
   return store.get(id);
 }
 
 export async function deleteDeadLetter(
   id: string,
   customPath?: string,
+  backend?: DeadLetterBackend,
 ): Promise<boolean> {
-  const store = createDeadLetterStore(undefined, customPath);
+  const store = createDeadLetterStore(backend, customPath);
   return store.delete(id);
 }
 
 export async function retryFromDeadLetter(
   id: string,
   customPath?: string,
+  backend?: DeadLetterBackend,
 ): Promise<TaskEnvelope | null> {
-  const store = createDeadLetterStore(undefined, customPath);
+  const store = createDeadLetterStore(backend, customPath);
   const item = await store.get(id);
   if (!item) return null;
 
