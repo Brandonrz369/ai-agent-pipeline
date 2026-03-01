@@ -68,7 +68,7 @@ program
 const deadLetter = program
   .command('dead-letter')
   .description('Dead-letter queue management')
-  .addHelpText('after','\nSubcommands:\n  list              List all items in the dead-letter queue\n  retry <id>        Retry a dead-letter item by ID\n  inspect <id>      Inspect a dead-letter item by ID\n\nExamples:\n  $ pipeline dead-letter list\n  $ pipeline dead-letter retry dl-001\n  $ pipeline dead-letter inspect dl-001');
+  .addHelpText('after','\nSubcommands:\n  list              List all items in the dead-letter queue\n  retry <id>        Retry a dead-letter item by ID\n  delete <id>       Delete a dead-letter item by ID\n  inspect <id>      Inspect a dead-letter item by ID\n\nExamples:\n  $ pipeline dead-letter list\n  $ pipeline dead-letter retry dl-001\n  $ pipeline dead-letter delete dl-001\n  $ pipeline dead-letter inspect dl-001');
 
 deadLetter
   .command('list')
@@ -81,11 +81,20 @@ deadLetter
 
 deadLetter
   .command('retry <id>')
-  .description('Retry a dead-letter item')
-  .addHelpText('after','\nExamples:\n  $ pipeline dead-letter retry dl-001\n  $ pipeline dead-letter retry dl-abc123')
+  .description('Retry a dead-letter item (resets envelope and removes from DLQ)')
+  .addHelpText('after','\nExamples:\n  $ pipeline dead-letter retry dl-001')
   .action(async (id) => {
     const { deadLetterRetryCommand } = await import('./commands/dead-letter.js');
     await deadLetterRetryCommand(id);
+  });
+
+deadLetter
+  .command('delete <id>')
+  .description('Delete a dead-letter item')
+  .addHelpText('after','\nExamples:\n  $ pipeline dead-letter delete dl-001')
+  .action(async (id) => {
+    const { deadLetterDeleteCommand } = await import('./commands/dead-letter.js');
+    await deadLetterDeleteCommand(id);
   });
 
 deadLetter
@@ -139,7 +148,7 @@ program
 const registry = program
   .command('registry')
   .description('Distributed worker node registry management')
-  .addHelpText('after','\nSubcommands:\n  list              List all registered worker nodes\n  status            Show registry summary (online/busy/offline)\n\nExamples:\n  $ pipeline registry list\n  $ pipeline registry status');
+  .addHelpText('after','\nSubcommands:\n  list              List all registered worker nodes\n  status            Show registry summary (online/busy/offline)\n  reap              Mark stale nodes (no heartbeat) as OFFLINE\n\nExamples:\n  $ pipeline registry list\n  $ pipeline registry status\n  $ pipeline registry reap');
 
 registry
   .command('list')
@@ -155,6 +164,14 @@ registry
   .action(async () => {
     const { registryStatusCommand } = await import('./commands/registry.js');
     await registryStatusCommand();
+  });
+
+registry
+  .command('reap')
+  .description('Mark silent nodes as OFFLINE')
+  .action(async () => {
+    const { registryReapCommand } = await import('./commands/registry.js');
+    await registryReapCommand();
   });
 
 program

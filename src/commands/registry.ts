@@ -32,3 +32,14 @@ export async function registryStatusCommand() {
   console.log(`  Offline:  ${summary.offline}`);
   console.log(`  Total:    ${summary.total}`);
 }
+
+export async function registryReapCommand() {
+  const orchestrator = new GeminiOrchestrator();
+  const count = await orchestrator.registry.reapStaleNodes();
+  
+  if (count > 0) {
+    console.log(`Cluster Maintenance: Marked ${count} stale nodes as OFFLINE.`);
+  } else {
+    console.log('Cluster Maintenance: No stale nodes detected.');
+  }
+}

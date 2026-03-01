@@ -81,6 +81,23 @@ export class WorkerRegistry {
     return result.changes > 0;
   }
 
+  async reapStaleNodes(thresholdMs: number = 300_000): Promise<number> {
+    const { getDb } = await import('../utils/db.js');
+    const db = getDb();
+    const cutoff = new Date(Date.now() - thresholdMs).toISOString();
+
+    const result = db.prepare(`
+      UPDATE worker_nodes 
+      SET status = 'OFFLINE'
+      WHERE status != 'OFFLINE' AND last_seen < ?
+    `).run(cutoff);
+
+    if (result.changes > 0) {
+      logger.info('Registry reaper: nodes marked offline', { count: result.changes, cutoff });
+    }
+    return result.changes;
+  }
+
   async getSummary() {
     const { getDb } = await import('../utils/db.js');
     const db = getDb();
