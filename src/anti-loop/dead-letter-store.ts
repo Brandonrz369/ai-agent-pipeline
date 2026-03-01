@@ -64,6 +64,70 @@ export class RedisDeadLetterStore implements IDeadLetterStore {
   }
 }
 
+export class SQLiteDeadLetterStore implements IDeadLetterStore {
+  async save(item: Omit<DeadLetterItem, 'sent_at'>): Promise<DeadLetterItem> {
+    const { getDb } = await import('../utils/db.js');
+    const db = getDb();
+    const fullItem: DeadLetterItem = {
+      ...item,
+      sent_at: new Date().toISOString(),
+    };
+
+    db.prepare(`
+      INSERT OR REPLACE INTO dead_letter_items (id, envelope, task, reason, sent_at, file_path)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      fullItem.id,
+      JSON.stringify(fullItem.envelope),
+      fullItem.task ? JSON.stringify(fullItem.task) : null,
+      fullItem.reason,
+      fullItem.sent_at,
+      fullItem.file_path || null
+    );
+
+    return fullItem;
+  }
+
+  async list(): Promise<DeadLetterItem[]> {
+    const { getDb } = await import('../utils/db.js');
+    const db = getDb();
+    const rows = db.prepare('SELECT * FROM dead_letter_items ORDER BY sent_at DESC').all() as any[];
+
+    return rows.map(row => ({
+      id: row.id,
+      envelope: JSON.parse(row.envelope),
+      task: row.task ? JSON.parse(row.task) : undefined,
+      reason: row.reason,
+      sent_at: row.sent_at,
+      file_path: row.file_path
+    }));
+  }
+
+  async get(id: string): Promise<DeadLetterItem | null> {
+    const { getDb } = await import('../utils/db.js');
+    const db = getDb();
+    const row = db.prepare('SELECT * FROM dead_letter_items WHERE id = ?').get(id) as any;
+
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      envelope: JSON.parse(row.envelope),
+      task: row.task ? JSON.parse(row.task) : undefined,
+      reason: row.reason,
+      sent_at: row.sent_at,
+      file_path: row.file_path
+    };
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const { getDb } = await import('../utils/db.js');
+    const db = getDb();
+    const result = db.prepare('DELETE FROM dead_letter_items WHERE id = ?').run(id);
+    return result.changes > 0;
+  }
+}
+
 export class LocalFileDeadLetterStore implements IDeadLetterStore {
   private dir: string;
 
@@ -110,8 +174,18 @@ export class LocalFileDeadLetterStore implements IDeadLetterStore {
   }
 
   async delete(id: string): Promise<boolean> {
-    // Basic implementation for local file deletion could be added here
-    return false;
+    const items = await this.list();
+    const item = items.find((i) => i.id === id);
+    if (!item || !item.file_path) return false;
+
+    try {
+      const { unlink } = await import('node:fs/promises');
+      await unlink(item.file_path);
+      return true;
+    } catch (err) {
+      logger.error('Failed to delete dead-letter item', { id, error: String(err) });
+      return false;
+    }
   }
 }
 
@@ -120,6 +194,10 @@ export function createDeadLetterStore(config?: DeadLetterBackend, fallbackPath?:
     return new RedisDeadLetterStore(config.connection_string, config.table_or_key_prefix);
   }
   
+  if (config?.type === 'SQLITE') {
+    return new SQLiteDeadLetterStore();
+  }
+
   if (!config || config.type === 'LOCAL_FILE') {
     return new LocalFileDeadLetterStore(fallbackPath);
   }

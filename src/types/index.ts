@@ -302,7 +302,7 @@ export interface RegistryUpdate {
   load_average?: number;
 }
 
-export type DeadLetterBackendType = 'LOCAL_FILE' | 'REDIS' | 'POSTGRES';
+export type DeadLetterBackendType = 'LOCAL_FILE' | 'REDIS' | 'POSTGRES' | 'SQLITE';
 
 export interface DeadLetterBackend {
   type: DeadLetterBackendType;
