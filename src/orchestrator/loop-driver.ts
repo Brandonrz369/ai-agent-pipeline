@@ -13,6 +13,7 @@ import { classifyTask, type ClassificationResult } from './classifier.js';
 import { formatPromptForMode } from './prompt-formatter.js';
 import { logger } from '../utils/logger.js';
 import { getMonitor } from '../monitoring/index.js';
+import { recordPerformanceMetric } from '../monitoring/metrics.js';
 
 export interface LoopDriverConfig {
   geminiApiKey: string;
@@ -141,6 +142,9 @@ export class CompletionLoopDriver {
       // EXECUTE via Claude Code
       const { result, output } = await this.executor.execute(task, envelope);
       lastOutput = output;
+
+      // Record performance metrics for T32
+      void recordPerformanceMetric(envelope, output);
 
       history.push({
         hop: envelope.hops,
