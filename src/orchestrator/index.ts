@@ -1,6 +1,7 @@
 import { AntigravityClient } from '../utils/antigravity-client.js';
 import type { TaskBlueprint } from '../types/index.js';
 import { CompletionLoopDriver, type LoopDriverConfig, type LoopResult } from './loop-driver.js';
+import { WorkerRegistry } from './registry.js';
 import { loadPipelineConfig } from '../config/loader.js';
 import { logger } from '../utils/logger.js';
 
@@ -14,10 +15,12 @@ export class GeminiOrchestrator {
   private client: AntigravityClient;
   private config: OrchestratorConfig;
   private loopDriver: CompletionLoopDriver | null = null;
+  public registry: WorkerRegistry;
 
   constructor(config: OrchestratorConfig = {}) {
     this.client = new AntigravityClient('gemini-3.1-pro-high');
     this.config = config;
+    this.registry = new WorkerRegistry();
   }
 
   private async getLoopDriver(): Promise<CompletionLoopDriver> {

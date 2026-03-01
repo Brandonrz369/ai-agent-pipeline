@@ -136,6 +136,27 @@ program
     await healthCommand(opts);
   });
 
+const registry = program
+  .command('registry')
+  .description('Distributed worker node registry management')
+  .addHelpText('after','\nSubcommands:\n  list              List all registered worker nodes\n  status            Show registry summary (online/busy/offline)\n\nExamples:\n  $ pipeline registry list\n  $ pipeline registry status');
+
+registry
+  .command('list')
+  .description('List all registered nodes')
+  .action(async () => {
+    const { registryListCommand } = await import('./commands/registry.js');
+    await registryListCommand();
+  });
+
+registry
+  .command('status')
+  .description('Show registry summary')
+  .action(async () => {
+    const { registryStatusCommand } = await import('./commands/registry.js');
+    await registryStatusCommand();
+  });
+
 program
   .command('escalation')
   .description('Human escalation dashboard -- STUCK/ESCALATED/BLOCKED tasks')
