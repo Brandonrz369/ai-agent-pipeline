@@ -102,7 +102,7 @@ describe('runSuperviseSession', () => {
     const envelope = makeEnvelope();
     const result = await runSuperviseSession(task, envelope, {
       provider,
-      config: { hitlApproved: true, maxActions: 10, contextOffloadEvery: 5, urlAllowlist: [] },
+      config: { hitlApproved: true, maxActions: 10, contextOffloadEvery: 5, urlAllowlist: ["https://safe\\.example\\.com/.*"] },
       analyzeScreenshot: async () => {
         return { type: 'click' as const, x: 100, y: 200, text: 'https://evil.com/malicious', description: 'Navigate to external page' };
       },

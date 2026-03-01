@@ -14,6 +14,7 @@ import type {
   ScreenshotAction,
 } from '../types/index.js';
 import { logger } from '../utils/logger.js';
+import { URLAllowlist } from '../permissions/index.js';
 
 const DEFAULT_CONFIG: SuperviseConfig = {
   maxActions: 50,
@@ -78,6 +79,7 @@ export async function runSuperviseSession(
   options: SuperviseHandlerOptions,
 ): Promise<SuperviseResult> {
   const cfg: SuperviseConfig = Object.assign({}, DEFAULT_CONFIG, options.config);
+  const allowlist = new URLAllowlist(cfg.urlAllowlist);
   const startTime = Date.now();
   const issues: string[] = [];
   if (!cfg.hitlApproved) {
@@ -111,7 +113,7 @@ export async function runSuperviseSession(
         break;
       }
       if (nextAction.type === 'click' && nextAction.text != null && nextAction.text.startsWith('http')) {
-        if (!isUrlAllowed(nextAction.text, cfg.urlAllowlist)) {
+        if (!allowlist.isAllowed(nextAction.text)) {
           issues.push('SAFETY: URL not on allowlist: ' + nextAction.text);
           status = 'STUCK';
           finalSummary = 'Stopped: navigation to disallowed URL: ' + nextAction.text;

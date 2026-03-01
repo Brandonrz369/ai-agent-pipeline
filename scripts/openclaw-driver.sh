@@ -40,7 +40,7 @@ CDP_PORT=18800
 # WORKER_MODEL: BRAVO/CHARLIE are builders — Sonnet is fine
 # To switch everyone to Opus: set all to ""
 # To switch everyone to Sonnet: set all to "sonnet"
-BRAINSTORM_MODEL=""          # empty = default (Opus) — the one brain call
+BRAINSTORM_MODEL="sonnet"    # "sonnet" for everything; set "" for Opus
 ALPHA_MODEL="sonnet"         # "sonnet" for all workers; set "" for Opus
 WORKER_MODEL="sonnet"        # "sonnet" saves Opus quota for builders
 
