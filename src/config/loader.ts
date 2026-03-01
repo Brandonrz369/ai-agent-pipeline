@@ -45,3 +45,26 @@ export async function loadPipelineConfig(): Promise<PipelineConfig> {
   return _pipelineConfig;
 }
 
+export interface McpServerConfig {
+  description: string;
+  command: string;
+  args: string[];
+  env?: Record<string, string>;
+  available_to: string[];
+  docker_image: string | null;
+  approved_digest: string | null;
+}
+
+export interface McpRegistryConfig {
+  servers: Record<string, McpServerConfig>;
+  access_matrix: Record<string, string[]>;
+}
+
+let _mcpConfig: McpRegistryConfig | null = null;
+
+export async function loadMcpConfig(): Promise<McpRegistryConfig> {
+  if (_mcpConfig) return _mcpConfig;
+  _mcpConfig = await loadYamlConfig<McpRegistryConfig>('config/mcp-servers.yaml');
+  return _mcpConfig;
+}
+

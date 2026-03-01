@@ -11,7 +11,7 @@ servers:
     args: ["-y", "@anthropic/mcp-server-filesystem"]
     available_to: ["orchestrator", "worker", "redteam", "supervisor"]
     docker_image: null              # Runs natively
-    approved_digest: null
+    approved_digest: "sha256:85425017053de384..."
 
   bash:
     description: "Shell command execution"
@@ -19,7 +19,7 @@ servers:
     args: ["-y", "@anthropic/mcp-server-bash"]
     available_to: ["worker", "supervisor"]
     docker_image: null
-    approved_digest: null
+    approved_digest: "sha256:611f99594b43d8e7..."
 
   github:
     description: "GitHub API operations (PRs, issues, repos)"
@@ -29,7 +29,7 @@ servers:
       GITHUB_TOKEN: "${GITHUB_TOKEN}"
     available_to: ["orchestrator", "worker"]
     docker_image: null
-    approved_digest: null
+    approved_digest: "sha256:72af6afbcfa9f01d..."
 
   # ── Gemini MCP Servers ────────────────────────────────────────
 
@@ -41,6 +41,7 @@ servers:
       GEMINI_API_KEY: "${GEMINI_API_KEY}"
       GEMINI_PRO_MODEL: "gemini-3.1-pro-preview"
     available_to: ["orchestrator", "worker", "redteam", "supervisor"]
+    approved_digest: "sha256:f551803847e9db5e..."
     tools:
       - gemini-search           # Web search via Gemini
       - gemini-create-cache     # Create/update Gemini context cache
@@ -56,6 +57,7 @@ servers:
       GEMINI_MODEL: "gemini-3.1-pro-high"
       MAX_SUMMARY_TOKENS: "200"
     available_to: ["worker", "supervisor"]
+    approved_digest: "sha256:7ec9cb151de7b1d3..."
     tools:
       - store_context           # Send raw context → Gemini compresses → stores summary + full
       - get_summary             # Retrieve compressed summary by key
@@ -72,16 +74,27 @@ servers:
     env:
       REPORTS_DIR: "/home/brans/ai-agent-pipeline/reports"
     available_to: ["orchestrator", "worker", "supervisor"]
+    approved_digest: "sha256:d13b59ca522c0ed2..."
     tools:
       - list_reports
       - search_reports
       - get_report_details
 
+  github-advanced:
+    description: "Automated GitHub PR management with mandatory Red Team review cycle."
+    command: "npx"
+    args: ["tsx", "src/mcp-servers/github-advanced/server.ts"]
+    available_to: ["orchestrator", "worker"]
+    approved_digest: "sha256:69910f4f8f4b2baa..."
+    tools:
+      - create_pr_with_redteam
+      - check_review_status
+
 # ── Access Control Matrix ─────────────────────────────────────────
 # Cross-reference: security/rbac-config.md
 
 access_matrix:
-  orchestrator:   [filesystem, github, gemini, pipeline-context]
-  worker:         [filesystem, bash, github, gemini, gemini-cache, pipeline-context]
+  orchestrator:   [filesystem, github, gemini, pipeline-context, github-advanced]
+  worker:         [filesystem, bash, github, gemini, gemini-cache, pipeline-context, github-advanced]
   redteam:        [filesystem, gemini]
   supervisor:     [filesystem, bash, gemini, gemini-cache, pipeline-context]
