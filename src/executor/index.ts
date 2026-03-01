@@ -69,7 +69,13 @@ export class ClaudeCodeExecutor {
     }
     const superviseResult = await runSuperviseSession(task, envelope, this.options.superviseOptions as SuperviseHandlerOptions);
     const status: TaskStatus = superviseResult.status === 'PASS' ? 'PASS' : superviseResult.status === 'STUCK' ? 'BLOCKED' : 'FAIL';
-    const output: ClaudeOutput = { task_id: superviseResult.task_id, status, summary: superviseResult.summary, duration_ms: superviseResult.duration_ms };
+    const output: ClaudeOutput = {
+      task_id: superviseResult.task_id,
+      status,
+      summary: superviseResult.summary,
+      affected_files: [], // Supervise result would need to track this if it modifies local files
+      duration_ms: superviseResult.duration_ms,
+    };
     if (superviseResult.mcp_cache_key) { envelope.mcp_cache_key = superviseResult.mcp_cache_key; }
     const durationMs = superviseResult.duration_ms || Date.now() - startTime;
     return { result: { success: status === 'PASS', output, rawOutput: JSON.stringify(superviseResult), rawError: '', exitCode: status === 'PASS' ? 0 : 1, durationMs }, output };

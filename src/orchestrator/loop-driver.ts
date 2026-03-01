@@ -184,7 +184,7 @@ export class CompletionLoopDriver {
       const postHop = await this.antiLoop.postHopUpdate(
         envelope,
         verification.verdict,
-        [],  // affected files (would need to be tracked per task)
+        output.affected_files || [],
         task,
       );
 

@@ -166,8 +166,14 @@ export interface PipelineConfig {
     backflow_detection: boolean;
     hash_algorithm: string;
   };
+  registry?: {
+    enabled: boolean;
+    heartbeat_interval_ms: number;
+    nodes: WorkerNode[];
+  };
   dead_letter: {
     path: string;
+    backend?: DeadLetterBackend;
     notification: {
       telegram: boolean;
       discord: boolean;
@@ -184,6 +190,7 @@ export interface ClaudeOutput {
   status: TaskStatus;
   report_file?: string;
   state_hash_post?: string;
+  affected_files?: string[];
   summary: string;
   session_id?: string;
   cost_usd?: number;
@@ -271,4 +278,33 @@ export interface SuperviseConfig {
   contextOffloadEvery: number;
   urlAllowlist: string[];
   hitlApproved: boolean;
+}
+
+// ── Distributed Scaling (Phase 4) ──
+
+export type NodeStatus = 'ONLINE' | 'OFFLINE' | 'BUSY' | 'MAINTENANCE';
+
+export interface WorkerNode {
+  id: string;
+  hostname: string;
+  ip: string;
+  port: number;
+  status: NodeStatus;
+  capabilities: string[];
+  last_seen: string;
+  load_average: number;
+}
+
+export interface RegistryUpdate {
+  node_id: string;
+  status: NodeStatus;
+  load_average?: number;
+}
+
+export type DeadLetterBackendType = 'LOCAL_FILE' | 'REDIS' | 'POSTGRES';
+
+export interface DeadLetterBackend {
+  type: DeadLetterBackendType;
+  connection_string?: string;
+  table_or_key_prefix?: string;
 }

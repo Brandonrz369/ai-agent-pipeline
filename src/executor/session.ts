@@ -87,16 +87,21 @@ export async function spawnClaudeSession(options: SessionOptions): Promise<Sessi
               task_id: '',
               status: code === 0 ? 'PASS' : 'FAIL',
               summary: parsedJson.result as string,
+              affected_files: [],
             };
           }
         } else {
           output = parsedJson as unknown as ClaudeOutput;
+          if (output && !output.affected_files) {
+            output.affected_files = [];
+          }
         }
       } catch {
         output = {
           task_id: '',
           status: code === 0 ? 'PASS' : 'FAIL',
           summary: stdout.trim(),
+          affected_files: [],
         };
       }
 

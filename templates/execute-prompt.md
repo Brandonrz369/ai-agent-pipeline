@@ -73,6 +73,7 @@ Return JSON to Gemini:
   "status": "PASS|FAIL|PARTIAL|BLOCKED",
   "report_file": "{report_file}",
   "state_hash_post": "{sha256}",
+  "affected_files": ["path/to/file1.ts", "path/to/file2.ts"],
   "summary": "One-sentence result summary"
 }
 ```
