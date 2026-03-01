@@ -20,6 +20,7 @@ describe('Task API -- GET /api/tasks', () => {
 
   beforeEach(async () => {
     store = new TaskStore();
+    store.clear();
     port = 9100 + Math.floor(Math.random() * 900);
     srv = createWebhookServer({ port, taskStore: store });
     await srv.start();

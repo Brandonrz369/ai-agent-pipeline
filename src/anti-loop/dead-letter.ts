@@ -39,6 +39,14 @@ export async function inspectDeadLetter(
   return store.get(id);
 }
 
+export async function deleteDeadLetter(
+  id: string,
+  customPath?: string,
+): Promise<boolean> {
+  const store = createDeadLetterStore(undefined, customPath);
+  return store.delete(id);
+}
+
 export async function retryFromDeadLetter(
   id: string,
   customPath?: string,

@@ -63,4 +63,20 @@ function initSchema(db: Database.Database) {
       updated_at TEXT
     )
   `).run();
+
+  // Advanced Telemetry (T32)
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS performance_metrics (
+      id TEXT PRIMARY KEY,
+      task_id TEXT,
+      trace_id TEXT,
+      node_id TEXT,
+      hop INTEGER,
+      mode TEXT,
+      duration_ms INTEGER,
+      cost_usd REAL,
+      status TEXT,
+      timestamp TEXT
+    )
+  `).run();
 }

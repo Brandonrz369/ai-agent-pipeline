@@ -40,7 +40,23 @@ export async function deadLetterRetryCommand(id: string) {
     process.exit(1);
   }
 
-  console.log(`Retrying: ${id}`);
+  // After generating the retry envelope, we should remove the old failed item
+  const { deleteDeadLetter } = await import('../anti-loop/dead-letter.js');
+  await deleteDeadLetter(id);
+
+  console.log(`Retrying: ${id} (removed from DLQ)`);
   console.log(`Reset envelope: TTL ${envelope.ttl_max}, mode ${envelope.mode}`);
   console.log(JSON.stringify(envelope, null, 2));
+}
+
+export async function deadLetterDeleteCommand(id: string) {
+  const { deleteDeadLetter } = await import('../anti-loop/dead-letter.js');
+  const success = await deleteDeadLetter(id);
+
+  if (!success) {
+    console.error(`Failed to delete or not found: ${id}`);
+    process.exit(1);
+  }
+
+  console.log(`Deleted: ${id}`);
 }
