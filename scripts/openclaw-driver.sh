@@ -44,6 +44,9 @@ BRAINSTORM_MODEL="sonnet"    # "sonnet" for everything; set "" for Opus
 ALPHA_MODEL="sonnet"         # "sonnet" for all workers; set "" for Opus
 WORKER_MODEL="sonnet"        # "sonnet" saves Opus quota for builders
 
+# Gemini API key — loaded from environment, never hardcoded
+export GEMINI_API_KEY="${GEMINI_API_KEY:-}"
+
 # Permission prefix — prepended to all agent prompts
 PERMISSION_PREFIX="8925 sudo"
 
@@ -208,9 +211,10 @@ RULES:
 1. If an agent's tmux=no, spawn it. If tmux=yes, leave it alone.
 2. ALPHA should ALWAYS be running — if tmux=no, always include a spawn_tmux for alpha-supervisor.
 3. All spawn_tmux prompts MUST start with: "Read .collab/{agent}/IDENTITY.md first."
-4. Be SPECIFIC in prompts: exact file paths, step-by-step instructions, expected outcomes.
-5. BRAVO and CHARLIE should EXIT when done. ALPHA stands by after supervision.
-6. Working directory for all agents: /home/brans/ai-agent-pipeline
+4. All spawn_tmux prompts MUST include: "Use list_keys + get_summary to load prior context from brain-context cache before starting. Before exiting, use store_context to save your findings."
+5. Be SPECIFIC in prompts: exact file paths, step-by-step instructions, expected outcomes.
+6. BRAVO and CHARLIE should EXIT when done. ALPHA stands by after supervision.
+7. Working directory for all agents: /home/brans/ai-agent-pipeline
 
 Think freely, then output ONLY the JSON decision object at the end. No markdown fences around the JSON.
 
