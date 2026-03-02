@@ -45,9 +45,9 @@ CDP_PORT=18800
 # WORKER_MODEL: BRAVO/CHARLIE are builders — Sonnet is fine
 # To switch everyone to Opus: set all to ""
 # To switch everyone to Sonnet: set all to "sonnet"
-BRAINSTORM_MODEL="sonnet"    # "sonnet" for everything; set "" for Opus
-ALPHA_MODEL="sonnet"         # "sonnet" for all workers; set "" for Opus
-WORKER_MODEL="sonnet"        # "sonnet" saves Opus quota for builders
+BRAINSTORM_MODEL=""          # empty = Opus for all
+ALPHA_MODEL=""               # empty = Opus for all
+WORKER_MODEL=""              # empty = Opus for all
 
 # Gemini API key — loaded from environment, never hardcoded
 export GEMINI_API_KEY="${GEMINI_API_KEY:-}"
@@ -339,13 +339,16 @@ REASONING=$(python3 -c "import json; print(json.load(open('$TMP_DIR/decision.jso
   echo "- ALPHA tmux: $ALPHA_RUNNING | BRAVO tmux: $BRAVO_RUNNING | CHARLIE tmux: $CHARLIE_RUNNING"
 } >> "$COLLAB_DIR/shared/MESSAGES.md"
 
-# Process each action
+# Process each action — write to file first, then iterate (avoids pipe subshell)
 python3 -c "
 import json
 decision = json.load(open('$TMP_DIR/decision.json'))
-for action in decision.get('actions', []):
-    print(json.dumps(action))
-" 2>/dev/null | while IFS= read -r ACTION_JSON; do
+with open('$TMP_DIR/actions.jsonl', 'w') as f:
+    for action in decision.get('actions', []):
+        f.write(json.dumps(action) + '\n')
+" 2>/dev/null
+
+while IFS= read -r ACTION_JSON; do
   ACTION_TYPE=$(echo "$ACTION_JSON" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('type','unknown'))" 2>/dev/null || echo "unknown")
 
   case "$ACTION_TYPE" in
@@ -482,7 +485,7 @@ for action in decision.get('actions', []):
       log "WARN: Unknown action type: $ACTION_TYPE"
       ;;
   esac
-done
+done < "$TMP_DIR/actions.jsonl"
 
 # ─── Step 6: Save state ──────────────────────────────────────────────
 python3 -c "
