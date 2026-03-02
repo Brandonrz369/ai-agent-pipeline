@@ -382,8 +382,13 @@ while IFS= read -r ACTION_JSON; do
       if [ -f "$SESSION_ID_FILE" ]; then
         PREV_SESSION_ID=$(cat "$SESSION_ID_FILE" 2>/dev/null)
         if [ -n "$PREV_SESSION_ID" ]; then
-          RESUME_FLAG="--resume $PREV_SESSION_ID"
-          log "Resuming previous session $PREV_SESSION_ID for $AGENT"
+          # Verify the session file still exists before trying to resume
+          if [ -f "$HOME/.claude/projects/-home-brans-ai-agent-pipeline/${PREV_SESSION_ID}.jsonl" ]; then
+            RESUME_FLAG="--resume $PREV_SESSION_ID"
+            log "Will resume previous session $PREV_SESSION_ID for $AGENT"
+          else
+            log "Previous session $PREV_SESSION_ID not found on disk, starting fresh"
+          fi
         fi
       fi
 
@@ -393,19 +398,41 @@ while IFS= read -r ACTION_JSON; do
         continue
       fi
 
+      # Build the agent launch command with session ID capture
+      # The wrapper: snapshot sessions BEFORE launch, run claude, then diff to find new session
+      AGENT_LAUNCH_SCRIPT="$TMP_DIR/${AGENT:-agent}-launch.sh"
+      cat > "$AGENT_LAUNCH_SCRIPT" << 'LAUNCH_EOF'
+#!/bin/bash
+AGENT_NAME="$1"; PROMPT_FILE="$2"; MODEL_FLAG="$3"; MCP_FLAG="$4"; RESUME_FLAG="$5"
+SESSION_ID_FILE="$6"; LOG_FILE="$7"; PIPELINE_DIR="$8"
+cd "$PIPELINE_DIR"
+
+# Snapshot existing sessions before launch
+ls -1 ~/.claude/projects/-home-brans-ai-agent-pipeline/*.jsonl 2>/dev/null | sort > /tmp/pipeline-driver/${AGENT_NAME}-sessions-before.txt
+
+# Run claude
+env -u CLAUDECODE claude -p "$(cat "$PROMPT_FILE")" $MODEL_FLAG $MCP_FLAG $RESUME_FLAG 2>&1 | tee -a "$LOG_FILE"
+
+# After claude exits, find the new session by diffing
+ls -1 ~/.claude/projects/-home-brans-ai-agent-pipeline/*.jsonl 2>/dev/null | sort > /tmp/pipeline-driver/${AGENT_NAME}-sessions-after.txt
+NEW_SESSION=$(comm -13 /tmp/pipeline-driver/${AGENT_NAME}-sessions-before.txt /tmp/pipeline-driver/${AGENT_NAME}-sessions-after.txt | head -1)
+if [ -n "$NEW_SESSION" ]; then
+  basename "$NEW_SESSION" .jsonl > "$SESSION_ID_FILE"
+  echo "Saved session ID: $(cat "$SESSION_ID_FILE")" >> "$LOG_FILE"
+fi
+echo "${AGENT_NAME} SESSION ENDED at $(date)" >> "$LOG_FILE"
+sleep 10
+LAUNCH_EOF
+      chmod +x "$AGENT_LAUNCH_SCRIPT"
+
       log "Spawning $SESSION_NAME ($AGENT) [model=$SPAWN_MODEL]..."
       tmux new-session -d -s "$SESSION_NAME" \
-        "cd $PIPELINE_DIR && env -u CLAUDECODE claude -p \"\$(cat $TMP_DIR/${AGENT:-agent}-prompt.txt)\" $AGENT_MODEL_FLAG $MCP_FLAG $RESUME_FLAG 2>&1 | tee -a $LOG_FILE; echo '${SESSION_NAME} SESSION ENDED at '\$(date) >> $LOG_FILE; sleep 10" 2>/dev/null \
+        "bash $AGENT_LAUNCH_SCRIPT '$AGENT' '$TMP_DIR/${AGENT:-agent}-prompt.txt' '$AGENT_MODEL_FLAG' '$MCP_FLAG' '$RESUME_FLAG' '$SESSION_ID_FILE' '$LOG_FILE' '$PIPELINE_DIR'" 2>/dev/null \
         && log "STARTED: $SESSION_NAME" \
         || log "WARN: $SESSION_NAME spawn failed"
 
-      # Capture the session ID for future --resume
-      # Claude prints session ID in output; also check the project sessions dir
-      LATEST_SESSION=$(ls -t ~/.claude/projects/-home-brans-ai-agent-pipeline/*.jsonl 2>/dev/null | head -1 | xargs -I{} basename {} .jsonl)
-      if [ -n "$LATEST_SESSION" ]; then
-        echo "$LATEST_SESSION" > "$SESSION_ID_FILE"
-        log "Saved session ID: $LATEST_SESSION"
-      fi
+      # Small delay between spawns to avoid race conditions on session ID capture
+      sleep 3
       ;;
 
     shell_command)
