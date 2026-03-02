@@ -3,6 +3,8 @@ import { withRetry } from './retry.js';
 
 const ANTIGRAVITY_URL = process.env.ANTIGRAVITY_URL || 'http://127.0.0.1:8080';
 const DEFAULT_MODEL = process.env.ANTIGRAVITY_MODEL || 'gemini-3.1-pro-high';
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'google/gemini-2.5-flash';
 
 export interface AntigravityResponse {
   text: string;
@@ -32,6 +34,21 @@ export class AntigravityClient {
   }
 
   private async _call(prompt: string, maxTokens: number): Promise<AntigravityResponse> {
+    try {
+      return await this._callAntigravity(prompt, maxTokens);
+    } catch (antigravityErr) {
+      if (!OPENROUTER_API_KEY) {
+        throw antigravityErr;
+      }
+      logger.warn('Antigravity proxy failed, falling back to OpenRouter', {
+        model: this.model,
+        error: antigravityErr instanceof Error ? antigravityErr.message : String(antigravityErr),
+      });
+      return await this._callOpenRouter(prompt, maxTokens);
+    }
+  }
+
+  private async _callAntigravity(prompt: string, maxTokens: number): Promise<AntigravityResponse> {
     const body = JSON.stringify({
       model: this.model,
       max_tokens: maxTokens,
@@ -70,6 +87,43 @@ export class AntigravityClient {
 
     if (!text) {
       logger.warn('Antigravity returned empty text', { model: this.model });
+    }
+
+    return { text };
+  }
+
+  private async _callOpenRouter(prompt: string, maxTokens: number): Promise<AntigravityResponse> {
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: OPENROUTER_MODEL,
+        max_tokens: maxTokens,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      throw new Error(`OpenRouter ${res.status}: ${errText.slice(0, 300)}`);
+    }
+
+    const data = await res.json() as {
+      choices?: Array<{ message?: { content?: string } }>;
+      error?: unknown;
+    };
+
+    if (data.error) {
+      throw new Error(`OpenRouter error: ${JSON.stringify(data.error)}`);
+    }
+
+    const text = data.choices?.[0]?.message?.content ?? '';
+
+    if (!text) {
+      logger.warn('OpenRouter returned empty text', { model: OPENROUTER_MODEL });
     }
 
     return { text };

@@ -13,7 +13,9 @@
       "args": ["tsx", "src/mcp-servers/gemini-antigravity/server.ts"],
       "cwd": "/home/brans/ai-agent-pipeline",
       "env": {
-        "ANTIGRAVITY_URL": "http://127.0.0.1:8080"
+        "ANTIGRAVITY_URL": "http://127.0.0.1:8080",
+        "OPENROUTER_API_KEY": "${OPENROUTER_API_KEY}",
+        "OPENROUTER_MODEL": "google/gemini-2.5-flash"
       }
     },
     "brain-context": {
@@ -22,6 +24,8 @@
       "cwd": "/home/brans/ai-agent-pipeline",
       "env": {
         "ANTIGRAVITY_URL": "http://127.0.0.1:8080",
+        "OPENROUTER_API_KEY": "${OPENROUTER_API_KEY}",
+        "OPENROUTER_MODEL": "google/gemini-2.5-flash",
         "GEMINI_MODEL": "gemini-3.1-pro-high"
       }
     }

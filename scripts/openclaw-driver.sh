@@ -144,51 +144,19 @@ fi
 STATE_SIZE=$(wc -c < "$TMP_DIR/full-state.txt")
 log "Full state collected: ${STATE_SIZE} bytes"
 
-# ─── Step 2: Compress state via Gemini ───────────────────────────────
-log "Compressing state via Gemini..."
-
-BRAINSTORM_PROMPT=""
-BRAINSTORM_PROMPT=$(python3 "$PIPELINE_DIR/scripts/gemini-compress.py" compress "$TMP_DIR/full-state.txt" 2>/dev/null || echo "")
-
-if [ -z "$BRAINSTORM_PROMPT" ]; then
-  log "WARN: Gemini compression failed, building manual prompt"
-  # Manual fallback prompt
-  BRAINSTORM_PROMPT=$(cat << MANUAL_END
-You are the strategic brain for the AI Agent Pipeline. Decide what actions NEXUS should execute.
-
-Current state:
-- ALPHA (supervisor) tmux: $ALPHA_RUNNING
-- BRAVO (builder 1) tmux: $BRAVO_RUNNING
-- CHARLIE (builder 2) tmux: $CHARLIE_RUNNING
-
-$(cat "$TMP_DIR/full-state.txt" | head -100)
-
-Return a JSON object with an 'actions' array and 'reasoning' string. Each action has a 'type' field.
-See templates/decision-schema.json for the schema. Action types: spawn_tmux, shell_command, browser_navigate, browser_screenshot, message, write_file, noop.
-
-Rules:
-1. If tmux=no, spawn the agent. If tmux=yes, leave it alone.
-2. ALPHA should ALWAYS be running.
-3. Prompts must start with: "Read .collab/{agent}/IDENTITY.md first."
-4. Be VERY specific: exact file paths, step-by-step instructions.
-5. Tell BRAVO and CHARLIE to EXIT when done. ALPHA stands by.
-MANUAL_END
-)
-fi
-
-log "Brainstorm prompt ready ($(echo "$BRAINSTORM_PROMPT" | wc -c) bytes)"
-
-# ─── Step 3: Inverted brainstorm — Claude thinks ────────────────────
+# ─── Step 2+3: Brainstorm — Claude reads raw state directly ──────────
+# No Gemini compression needed — Claude Opus handles 9KB easily.
+# Gemini tools are used INSIDE agent sessions (R-Labs MCP), not here.
 DECISION=""
 TOKENS_EXHAUSTED="false"
 
-log "Brainstorming with Claude..."
+log "Brainstorming with Claude (raw state, no compression)..."
 
-# Write brainstorm prompt to file to avoid shell escaping issues
+# Write brainstorm prompt with full raw state inline
 cat > "$TMP_DIR/brainstorm-prompt.txt" << 'SCHEMA_HEADER'
-You are the strategic brain for the AI Agent Pipeline. NEXUS (the body) has compressed the current system state and is asking you to think strategically about what to do next.
+You are the strategic brain for the AI Agent Pipeline. NEXUS (the body) has collected the current system state and is asking you to think strategically about what to do next.
 
-Read the situation below, think deeply, then return a JSON decision object.
+Read the full state below, think deeply, then return a JSON decision object.
 
 DECISION FORMAT (actions[] — see templates/decision-schema.json):
 {
@@ -223,11 +191,12 @@ RULES:
 
 Think freely, then output ONLY the JSON decision object at the end. No markdown fences around the JSON.
 
---- SITUATION FROM NEXUS ---
+--- FULL SYSTEM STATE ---
 
 SCHEMA_HEADER
 
-echo "$BRAINSTORM_PROMPT" >> "$TMP_DIR/brainstorm-prompt.txt"
+# Append raw state directly — no Gemini compression
+cat "$TMP_DIR/full-state.txt" >> "$TMP_DIR/brainstorm-prompt.txt"
 
 # Call Claude with 10 minute timeout, no --output-format json restriction
 BRAINSTORM_MODEL_FLAG=""
@@ -513,6 +482,10 @@ LAUNCH_EOF
       ;;
   esac
 done < "$TMP_DIR/actions.jsonl"
+
+# ─── Step 5b: Usage tracking ─────────────────────────────────────────
+log "Checking agent usage levels..."
+python3 "$PIPELINE_DIR/scripts/usage-tracker.py" check 2>>"$LOG_FILE" || log "WARN: Usage tracker failed"
 
 # ─── Step 6: Save state ──────────────────────────────────────────────
 python3 -c "

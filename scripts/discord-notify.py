@@ -7,9 +7,9 @@ Used by pipeline-driver to notify the user when:
 - Agents need human intervention
 
 Tries multiple delivery methods:
-1. OpenClaw Discord skill (if available)
-2. Direct Discord webhook (if DISCORD_WEBHOOK_URL is set)
-3. Gemini via Antigravity to compose message + log it
+1. Direct Discord webhook (if DISCORD_WEBHOOK_URL is set)
+2. OpenClaw Discord skill (if available)
+3. Gemini compose via Antigravity or OpenRouter + log to MESSAGES.md
 """
 
 import json
@@ -80,29 +80,25 @@ def try_webhook(title: str, message: str) -> bool:
 
 
 def try_gemini_compose(title: str, message: str) -> bool:
-    """Use Gemini to acknowledge the situation and log recommendations."""
-    try:
-        prompt = f"""The OpenClaw Pipeline Driver has detected an issue:
+    """Use Gemini to acknowledge the situation and log recommendations.
+    Tries Antigravity first, falls back to OpenRouter."""
+    prompt = f"""The OpenClaw Pipeline Driver has detected an issue:
 
 Title: {title}
 Details: {message}
 
-Please compose a brief status update (2-3 sentences) acknowledging this situation
-and suggesting what productive work can be done using only Gemini (free via Antigravity)
-while Claude Code tokens are unavailable. Suggestions might include:
-- Deep research on upcoming tasks
-- Caching documentation or API references
-- Generating task plans for when tokens reset
-- Code review suggestions
-
+Please compose a brief status update (2-3 sentences) acknowledging this situation.
 Reply with just the status update text, no JSON."""
 
+    text = ""
+
+    # Try Antigravity (free)
+    try:
         body = json.dumps({
             "model": "gemini-3.1-pro-high",
-            "max_tokens": 512,
+            "max_tokens": 256,
             "messages": [{"role": "user", "content": prompt}],
         })
-
         req = urllib.request.Request(
             ANTIGRAVITY_URL,
             data=body.encode('utf-8'),
@@ -114,24 +110,50 @@ Reply with just the status update text, no JSON."""
         )
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read())
-
-        text = ""
-        for block in data.get("content", []):
-            if block.get("type") == "text":
-                text += block.get("text", "")
-
-        if text.strip():
-            log(f"Gemini status: {text.strip()[:500]}")
-            # Write to MESSAGES.md so it's visible in collab
-            from datetime import datetime, timezone
-            ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
-            msg_path = "/home/brans/ai-agent-pipeline/.collab/shared/MESSAGES.md"
-            with open(msg_path, 'a') as f:
-                f.write(f"\n[{ts}] OPENCLAW-DRIVER->ALPHA: **{title}**\n")
-                f.write(f"- {text.strip()[:500]}\n")
-            return True
+        if data.get("type") != "error":
+            for block in data.get("content", []):
+                if block.get("type") == "text":
+                    text += block.get("text", "")
     except Exception as e:
-        log(f"Gemini compose failed: {e}")
+        log(f"Antigravity compose failed: {e}")
+
+    # Fall back to OpenRouter
+    if not text.strip():
+        openrouter_key = os.environ.get("OPENROUTER_API_KEY", "")
+        openrouter_model = os.environ.get("OPENROUTER_MODEL", "google/gemini-2.5-flash")
+        if openrouter_key:
+            try:
+                body = json.dumps({
+                    "model": openrouter_model,
+                    "max_tokens": 256,
+                    "messages": [{"role": "user", "content": prompt}],
+                })
+                req = urllib.request.Request(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    data=body.encode('utf-8'),
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {openrouter_key}",
+                    },
+                )
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    data = json.loads(resp.read())
+                choices = data.get("choices", [])
+                if choices:
+                    text = choices[0].get("message", {}).get("content", "")
+                log("Used OpenRouter for compose")
+            except Exception as e:
+                log(f"OpenRouter compose failed: {e}")
+
+    if text.strip():
+        log(f"Gemini status: {text.strip()[:500]}")
+        from datetime import datetime, timezone
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
+        msg_path = "/home/brans/ai-agent-pipeline/.collab/shared/MESSAGES.md"
+        with open(msg_path, 'a') as f:
+            f.write(f"\n[{ts}] OPENCLAW-DRIVER->ALPHA: **{title}**\n")
+            f.write(f"- {text.strip()[:500]}\n")
+        return True
     return False
 
 

@@ -19,6 +19,8 @@ import { readFileSync } from 'fs';
 
 const ANTIGRAVITY_URL = process.env.ANTIGRAVITY_URL || 'http://127.0.0.1:8080';
 const MODEL = process.env.GEMINI_MODEL || 'gemini-3.1-pro-high';
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'google/gemini-2.5-flash';
 
 // ─── Antigravity client ──────────────────────────────────────────────
 
@@ -37,6 +39,27 @@ interface AntigravityResponse {
 }
 
 async function callAntigravity(
+  messages: AntigravityMessage[],
+  opts: {
+    system?: string;
+    maxTokens?: number;
+    temperature?: number;
+  } = {},
+): Promise<string> {
+  try {
+    return await _callAntigravityProxy(messages, opts);
+  } catch (antigravityErr) {
+    if (!OPENROUTER_API_KEY) {
+      throw antigravityErr;
+    }
+    console.error(
+      `Antigravity proxy failed, falling back to OpenRouter: ${antigravityErr instanceof Error ? antigravityErr.message : String(antigravityErr)}`,
+    );
+    return await _callOpenRouter(messages, opts);
+  }
+}
+
+async function _callAntigravityProxy(
   messages: AntigravityMessage[],
   opts: {
     system?: string;
@@ -74,6 +97,61 @@ async function callAntigravity(
   const data = (await response.json()) as AntigravityResponse;
   const textBlocks = data.content?.filter((b) => b.type === 'text') ?? [];
   return textBlocks.map((b) => b.text).join('\n');
+}
+
+async function _callOpenRouter(
+  messages: AntigravityMessage[],
+  opts: {
+    system?: string;
+    maxTokens?: number;
+    temperature?: number;
+  } = {},
+): Promise<string> {
+  // Convert Anthropic Messages API format to OpenAI chat completions format
+  const openRouterMessages: Array<{ role: string; content: string }> = [];
+
+  if (opts.system) {
+    openRouterMessages.push({ role: 'system', content: opts.system });
+  }
+
+  for (const m of messages) {
+    openRouterMessages.push({ role: m.role, content: m.content });
+  }
+
+  const body: Record<string, unknown> = {
+    model: OPENROUTER_MODEL,
+    max_tokens: opts.maxTokens ?? 8192,
+    messages: openRouterMessages,
+  };
+
+  if (opts.temperature !== undefined) {
+    body.temperature = opts.temperature;
+  }
+
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenRouter ${response.status}: ${errorText}`);
+  }
+
+  const data = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+    error?: unknown;
+  };
+
+  if (data.error) {
+    throw new Error(`OpenRouter error: ${JSON.stringify(data.error)}`);
+  }
+
+  return data.choices?.[0]?.message?.content ?? '';
 }
 
 // ─── Local cache store (for gemini-create-cache / gemini-query-cache) ─
