@@ -1,0 +1,52 @@
+[
+  {
+    "task_id": "L01",
+    "metadata": { "project": "Ruiz-v-EightEleven", "node": 2, "workstream": "analyst", "batch": 1, "priority": "P1", "tier": 3 },
+    "task": {
+      "type": "RESEARCH",
+      "objective": "Extract critical facts and verbatim quotes from 23 email files.",
+      "instructions": [
+        "Read all 23 .eml files in /home/brans/ai-agent-pipeline/.collab/case/medasource/",
+        "Extract every instance of positive feedback received by Brandon Ruiz.",
+        "Extract the verbatim safety report sent on Dec 3, 2025.",
+        "Extract Trey Fisher's exact acknowledgement and the subsequent termination notice.",
+        "Document any admissions of late payment or penalties from Juan Castaneda."
+      ],
+      "context_queries": ["What is the specific violation reported on Dec 3?"]
+    },
+    "output": { "report_file": "reports/L01_email_analysis.md", "status_options": ["PASS", "FAIL", "BLOCKED"] },
+    "constraints": { "read_scope": ["/.collab/case/medasource/"], "write_scope": ["/reports/"] }
+  },
+  {
+    "task_id": "L02",
+    "metadata": { "project": "Ruiz-v-EightEleven", "node": 3, "workstream": "researcher", "batch": 1, "priority": "P1", "tier": 3 },
+    "task": {
+      "type": "RESEARCH",
+      "objective": "Deep research on CA Labor Code § 1102.5 and SB 497 (2024).",
+      "instructions": [
+        "Analyze the rebuttable presumption of retaliation under SB 497 for actions within 90 days.",
+        "Verify the 'clear and convincing evidence' standard for employer defense under Lawson v. PPG.",
+        "Research Health & Safety Code § 1278.5 regarding healthcare whistleblower protections.",
+        "Identify relevant case law for quality control employees (Green v. Ralee Engineering)."
+      ]
+    },
+    "output": { "report_file": "reports/L02_legal_research.md", "status_options": ["PASS", "FAIL", "BLOCKED"] },
+    "constraints": { "write_scope": ["/reports/"] }
+  },
+  {
+    "task_id": "L03",
+    "metadata": { "project": "Ruiz-v-EightEleven", "node": 1, "workstream": "lead", "batch": 1, "priority": "P1", "tier": 3 },
+    "task": {
+      "type": "CREATE",
+      "target_file": "reports/L03_master_timeline.md",
+      "objective": "Build the master chronological evidence timeline.",
+      "instructions": [
+        "Synthesize the brain dump and early email findings into a minute-by-minute timeline for Dec 3-4, 2025.",
+        "Map specific evidence IDs (emails, transcripts) to each timeline entry.",
+        "Highlight the 24-hour proximity between the protected report and the termination."
+      ]
+    },
+    "output": { "report_file": "reports/L03_master_timeline_report.md", "status_options": ["PASS", "FAIL", "BLOCKED"] },
+    "constraints": { "read_scope": ["/"], "write_scope": ["/reports/"] }
+  }
+]
